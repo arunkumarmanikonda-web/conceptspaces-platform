@@ -3,6 +3,7 @@ import { Brand } from "@/components/Brand";
 
 const items=[
   ["Dashboard","/app"],
+  ["CRM & Growth","/app/crm"],
   ["Projects","/app/projects"],
   ["Models","#"],
   ["Documents","#"],
@@ -10,7 +11,8 @@ const items=[
   ["Approvals","#"],
   ["Releases","#"],
   ["Quality","#"],
-  ["Commercial","#"],
+  ["Commercial","/app/commercial"],
+  ["Communications","/app/communications"],
   ["Analytics","#"]
 ];
 
@@ -21,6 +23,7 @@ export function AppSidebar(){
     {items.map(([label,href],index)=><Link key={label} href={href} className={`side-item ${index===0?'active':''}`}>{label}</Link>)}
     <div className="side-caption">Platform</div>
     <Link href="/app/admin" className="side-item">Super Admin</Link>
+    <Link href="/app/admin/access" className="side-item">Identity & Authority</Link>
     <Link href="/app/admin/integrations" className="side-item">Integrations</Link>
     <a className="side-item">Settings</a>
   </aside>;
