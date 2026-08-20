@@ -1,7 +1,6 @@
 import { PDFDocument,StandardFonts,rgb } from "pdf-lib";
 import { Document,Packer,Paragraph,HeadingLevel,Table,TableRow,TableCell,TextRun } from "docx";
-import ExcelJS from "exceljs";
-import PptxGenJS from "pptxgenjs";
+import { strToU8,zipSync } from "fflate";
 
 export type ReportPayload={
   schema_version:string;
@@ -16,10 +15,12 @@ export type ReportPayload={
   snapshot_hashes:Record<string,string>;
 };
 
-const brand={midnight:"0F1D33",signal:"3D6DF0",carbon:"202428",stone:"A7ACB3"};
+const brand={midnight:"0F1D33",signal:"3D6DF0",carbon:"202428",stone:"A7ACB3",white:"F6F7F8"};
 const title=(payload:ReportPayload)=>`${payload.project.code} · ${payload.project.name}`;
 const text=(v:unknown)=>v===null||v===undefined?"":typeof v==="string"?v:JSON.stringify(v);
 const clip=(v:unknown,n=120)=>{const s=text(v);return s.length>n?`${s.slice(0,n-1)}…`:s;};
+const xml=(v:unknown)=>text(v).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&apos;"}[m]||m));
+const zipXml=(files:Record<string,string>)=>Buffer.from(zipSync(Object.fromEntries(Object.entries(files).map(([name,value])=>[name,strToU8(value)])),{level:6}));
 
 function rows(payload:ReportPayload){
   return [
@@ -54,22 +55,69 @@ export async function generateDocx(payload:ReportPayload){
   return Packer.toBuffer(new Document({sections:[{children}]}));
 }
 
-export async function generateXlsx(payload:ReportPayload){
-  const workbook=new ExcelJS.Workbook();workbook.creator="Concept Spaces";workbook.subject=payload.report_type;
-  const summary=workbook.addWorksheet("Summary");summary.addRow(["CONCEPT SPACES","INTELLIGENCE, GIVEN FORM."]);summary.addRow(["Snapshot",payload.as_of]);rows(payload).forEach(r=>summary.addRow(r));summary.columns=[{width:28},{width:72}];
-  const truth=workbook.addWorksheet("Project Truth");truth.addRow(["Key","Kind","Value","Unit","Source","Confidence","Status","Criticality"]);payload.project_truth.forEach(r=>truth.addRow([r.record_key,r.kind,text(r.value),r.unit,r.source_reference,r.confidence,r.status,r.criticality]));truth.columns=[{width:30},{width:16},{width:60},{width:12},{width:35},{width:12},{width:15},{width:12}];
-  const req=workbook.addWorksheet("Requirements");req.addRow(["Code","Statement","Category","Status","Criticality","Acceptance Criteria"]);payload.requirements.forEach(r=>req.addRow([r.code,r.statement,r.category,r.status,r.criticality,text(r.acceptance_criteria)]));req.columns=[{width:18},{width:70},{width:24},{width:15},{width:12},{width:50}];
-  const reg=workbook.addWorksheet("REGULA");reg.addRow(["Disposition","Status","Observed","Required","Explanation","Checked At"]);payload.regulatory_findings.forEach(r=>reg.addRow([r.disposition,r.status,text(r.observed_value),text(r.required_value),r.explanation,r.checked_at]));reg.columns=[{width:16},{width:15},{width:35},{width:35},{width:70},{width:24}];
-  return Buffer.from(await workbook.xlsx.writeBuffer());
+function columnName(index:number){let n=index+1,s="";while(n){const r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}return s;}
+function worksheet(data:unknown[][]){
+  const body=data.map((row,ri)=>`<row r="${ri+1}">${row.map((value,ci)=>`<c r="${columnName(ci)}${ri+1}" t="inlineStr"><is><t xml:space="preserve">${xml(value)}</t></is></c>`).join("")}</row>`).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
 }
 
+export async function generateXlsx(payload:ReportPayload){
+  const sheets:[string,unknown[][]][]=[
+    ["Summary",[["CONCEPT SPACES","INTELLIGENCE, GIVEN FORM."],["Snapshot",payload.as_of],...rows(payload)]],
+    ["Project Truth",[["Key","Kind","Value","Unit","Source","Confidence","Status","Criticality"],...payload.project_truth.map(r=>[r.record_key,r.kind,text(r.value),r.unit,r.source_reference,r.confidence,r.status,r.criticality])],
+    ["Requirements",[["Code","Statement","Category","Status","Criticality","Acceptance Criteria"],...payload.requirements.map(r=>[r.code,r.statement,r.category,r.status,r.criticality,text(r.acceptance_criteria)])],
+    ["REGULA",[["Disposition","Status","Observed","Required","Explanation","Checked At"],...payload.regulatory_findings.map(r=>[r.disposition,r.status,text(r.observed_value),text(r.required_value),r.explanation,r.checked_at])]
+  ];
+  const overrides=sheets.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("");
+  const workbookSheets=sheets.map(([name],i)=>`<sheet name="${xml(name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join("");
+  const workbookRels=sheets.map((_,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join("");
+  const files:Record<string,string>={
+    "[Content_Types].xml":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${overrides}</Types>`,
+    "_rels/.rels":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+    "xl/workbook.xml":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${workbookSheets}</sheets></workbook>`,
+    "xl/_rels/workbook.xml.rels":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${workbookRels}</Relationships>`
+  };
+  sheets.forEach(([,data],i)=>{files[`xl/worksheets/sheet${i+1}.xml`]=worksheet(data);});
+  return zipXml(files);
+}
+
+const EMU=914400;
+function pptTextShape(id:number,name:string,lines:string[],x:number,y:number,w:number,h:number,size=18,color=brand.carbon,bold=false){
+  const paras=lines.map(line=>`<a:p><a:r><a:rPr lang="en-US" sz="${size*100}"${bold?' b="1"':''}><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:latin typeface="Arial"/></a:rPr><a:t>${xml(line)}</a:t></a:r><a:endParaRPr lang="en-US" sz="${size*100}"/></a:p>`).join("");
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${xml(name)}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${Math.round(x*EMU)}" y="${Math.round(y*EMU)}"/><a:ext cx="${Math.round(w*EMU)}" cy="${Math.round(h*EMU)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr wrap="square"/><a:lstStyle/>${paras}</p:txBody></p:sp>`;
+}
+function pptSlide(shapes:string){return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>${shapes}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;}
+
 export async function generatePptx(payload:ReportPayload){
-  const pptx=new PptxGenJS();pptx.layout="LAYOUT_WIDE";pptx.author="Concept Spaces";pptx.subject=payload.report_type;pptx.title=title(payload);pptx.company="Concept Spaces";
-  const slide=pptx.addSlide();slide.background={color:"F6F7F8"};slide.addShape(pptx.ShapeType.rect,{x:0,y:0,w:13.333,h:.35,fill:{color:brand.midnight},line:{color:brand.midnight}});slide.addText("CONCEPT SPACES",{x:.7,y:.65,w:4.5,h:.35,fontFace:"Arial",fontSize:18,bold:true,color:brand.midnight,charSpacing:2});slide.addText("INTELLIGENCE, GIVEN FORM.",{x:.7,y:1.05,w:4.5,h:.25,fontFace:"Arial",fontSize:7,color:brand.stone,charSpacing:2});slide.addText(payload.project.name,{x:.7,y:2.05,w:11.8,h:.7,fontFace:"Arial",fontSize:30,bold:false,color:brand.midnight});slide.addText(`${payload.project.code} · ${payload.report_type.replaceAll("_"," ").toUpperCase()}`,{x:.7,y:2.85,w:11,h:.35,fontFace:"Arial",fontSize:11,color:brand.signal});slide.addText(`Snapshot ${new Date(payload.as_of).toISOString()}`,{x:.7,y:6.75,w:6,h:.25,fontSize:8,color:brand.stone});
-  const overview=pptx.addSlide();overview.addText("Project Snapshot",{x:.7,y:.6,w:5,h:.5,fontSize:24,color:brand.midnight});overview.addTable(rows(payload).map(([a,b])=>[a,b]),{x:.7,y:1.35,w:11.8,h:4.8,border:{type:"solid",color:"DDE2E8",pt:1},fontFace:"Arial",fontSize:12,color:brand.carbon,fill:"FFFFFF",margin:.08});
-  const truth=pptx.addSlide();truth.addText("Project Truth",{x:.7,y:.6,w:5,h:.5,fontSize:24,color:brand.midnight});truth.addText(payload.project_truth.slice(0,12).map(r=>({text:`${clip(r.record_key,28)}: ${clip(r.value,65)}`,options:{bullet:{indent:14},breakLine:true}})),{x:.8,y:1.3,w:11.6,h:5.3,fontSize:11,color:brand.carbon,breakLine:true});
-  const reg=pptx.addSlide();reg.addText("REGULA Findings",{x:.7,y:.6,w:5,h:.5,fontSize:24,color:brand.midnight});reg.addText(payload.regulatory_findings.length?payload.regulatory_findings.slice(0,12).map(r=>({text:`${clip(r.disposition,12)} · ${clip(r.status,12)} · ${clip(r.explanation,70)}`,options:{bullet:{indent:14},breakLine:true}})):[{text:"No regulatory findings in this snapshot.",options:{}}],{x:.8,y:1.3,w:11.6,h:5.3,fontSize:11,color:brand.carbon});
-  const output=await pptx.write({outputType:"nodebuffer"});return Buffer.isBuffer(output)?output:Buffer.from(output as ArrayBuffer);
+  const slide1=pptSlide([
+    pptTextShape(2,"Brand",["CONCEPT SPACES"],.7,.6,5,.4,18,brand.midnight,true),
+    pptTextShape(3,"Tagline",["INTELLIGENCE, GIVEN FORM."],.7,1.05,5,.3,8,brand.stone),
+    pptTextShape(4,"Project",[payload.project.name],.7,2.0,11.5,.8,30,brand.midnight),
+    pptTextShape(5,"Report",[`${payload.project.code} · ${payload.report_type.replaceAll("_"," ").toUpperCase()}`],.7,2.9,11,.4,11,brand.signal),
+    pptTextShape(6,"Snapshot",[`Snapshot ${new Date(payload.as_of).toISOString()}`],.7,6.7,7,.25,8,brand.stone)
+  ].join(""));
+  const slide2=pptSlide(pptTextShape(2,"Snapshot",["PROJECT SNAPSHOT",...rows(payload).map(([a,b])=>`${a}: ${b}`)],.7,.6,11.8,5.8,16,brand.midnight));
+  const truthLines=payload.project_truth.slice(0,14).map(r=>`${clip(r.record_key,30)}: ${clip(r.value,75)}`);if(!truthLines.length)truthLines.push("No Project Truth records in this snapshot.");
+  const slide3=pptSlide(pptTextShape(2,"Truth",["PROJECT TRUTH",...truthLines],.7,.6,11.8,5.9,14,brand.carbon));
+  const regulaLines=payload.regulatory_findings.slice(0,14).map(r=>`${clip(r.disposition,14)} · ${clip(r.status,14)} · ${clip(r.explanation,75)}`);if(!regulaLines.length)regulaLines.push("No regulatory findings in this snapshot.");
+  const slide4=pptSlide(pptTextShape(2,"Regula",["REGULA FINDINGS",...regulaLines],.7,.6,11.8,5.9,14,brand.carbon));
+  const slides=[slide1,slide2,slide3,slide4];
+  const slideOverrides=slides.map((_,i)=>`<Override PartName="/ppt/slides/slide${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`).join("");
+  const slideIds=slides.map((_,i)=>`<p:sldId id="${256+i}" r:id="rId${i+2}"/>`).join("");
+  const presentationRels=[`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>`,...slides.map((_,i)=>`<Relationship Id="rId${i+2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${i+1}.xml"/>`)].join("");
+  const files:Record<string,string>={
+    "[Content_Types].xml":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/><Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/><Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>${slideOverrides}</Types>`,
+    "_rels/.rels":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/></Relationships>`,
+    "ppt/presentation.xml":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:sldIdLst>${slideIds}</p:sldIdLst><p:sldSz cx="12192000" cy="6858000" type="screen16x9"/><p:notesSz cx="6858000" cy="9144000"/><p:defaultTextStyle/></p:presentation>`,
+    "ppt/_rels/presentation.xml.rels":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${presentationRels}</Relationships>`,
+    "ppt/slideMasters/slideMaster1.xml":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld name="Concept Spaces"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld><p:clrMap accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" bg1="lt1" bg2="lt2" folHlink="folHlink" hlink="hlink" tx1="dk1" tx2="dk2"/><p:sldLayoutIdLst><p:sldLayoutId id="1" r:id="rId1"/></p:sldLayoutIdLst><p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles></p:sldMaster>`,
+    "ppt/slideMasters/_rels/slideMaster1.xml.rels":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/></Relationships>`,
+    "ppt/slideLayouts/slideLayout1.xml":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank" preserve="1"><p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>`,
+    "ppt/slideLayouts/_rels/slideLayout1.xml.rels":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>`,
+    "ppt/theme/theme1.xml":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Concept Spaces"><a:themeElements><a:clrScheme name="Concept Spaces"><a:dk1><a:srgbClr val="202428"/></a:dk1><a:lt1><a:srgbClr val="F6F7F8"/></a:lt1><a:dk2><a:srgbClr val="0F1D33"/></a:dk2><a:lt2><a:srgbClr val="E9EDF2"/></a:lt2><a:accent1><a:srgbClr val="3D6DF0"/></a:accent1><a:accent2><a:srgbClr val="A7ACB3"/></a:accent2><a:accent3><a:srgbClr val="51627A"/></a:accent3><a:accent4><a:srgbClr val="7C8797"/></a:accent4><a:accent5><a:srgbClr val="D2D7DE"/></a:accent5><a:accent6><a:srgbClr val="6B7480"/></a:accent6><a:hlink><a:srgbClr val="3D6DF0"/></a:hlink><a:folHlink><a:srgbClr val="51627A"/></a:folHlink></a:clrScheme><a:fontScheme name="Concept Spaces"><a:majorFont><a:latin typeface="Arial"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont><a:minorFont><a:latin typeface="Arial"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont></a:fontScheme><a:fmtScheme name="Concept Spaces"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements><a:objectDefaults/><a:extraClrSchemeLst/></a:theme>`
+  };
+  slides.forEach((slide,i)=>{files[`ppt/slides/slide${i+1}.xml`]=slide;files[`ppt/slides/_rels/slide${i+1}.xml.rels`]=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/></Relationships>`;});
+  return zipXml(files);
 }
 
 export function generateHtml(payload:ReportPayload){
