@@ -6,15 +6,26 @@ export interface GoDaddyDnsConfig {
 }
 
 type GoDaddyDnsRecord = {
-  type: DnsRecordInput["type"] | "SRV" | "NS" | "SOA" | "ALIAS";
+  recordId: string;
+  type: DnsRecordInput["type"] | "SRV" | "NS" | "SOA";
   name: string;
   data: string;
   ttl: number;
   priority?: number;
 };
 
+type GoDaddyDnsCollection = {
+  items: GoDaddyDnsRecord[];
+  page?: number;
+  pageSize?: number;
+  total?: number;
+};
+
+const SUPPORTED_RECORD_TYPES = new Set<DnsRecordInput["type"]>(["A", "AAAA", "CNAME", "TXT", "MX", "CAA"]);
+
 export class GoDaddyDnsAdapter implements DnsAdapter {
   private readonly baseUrl: string;
+
   constructor(private readonly config: GoDaddyDnsConfig) {
     this.baseUrl = config.baseUrl ?? "https://api.godaddy.com/v3";
   }
@@ -27,41 +38,82 @@ export class GoDaddyDnsAdapter implements DnsAdapter {
     };
   }
 
+  private async listDetailed(domain: string): Promise<GoDaddyDnsRecord[]> {
+    const items: GoDaddyDnsRecord[] = [];
+    let page = 1;
+    const pageSize = 100;
+
+    while (true) {
+      const url = new URL(`${this.baseUrl}/domains/zones/${encodeURIComponent(domain)}/dns-records`);
+      url.searchParams.set("page", String(page));
+      url.searchParams.set("pageSize", String(pageSize));
+
+      const response = await fetch(url, { headers: this.headers(), cache: "no-store" });
+      if (!response.ok) throw new Error(`GoDaddy DNS list failed (${response.status})`);
+
+      const payload = await response.json() as GoDaddyDnsCollection;
+      const pageItems = Array.isArray(payload.items) ? payload.items : [];
+      items.push(...pageItems);
+
+      if (pageItems.length < pageSize || (payload.total != null && items.length >= payload.total)) break;
+      page += 1;
+    }
+
+    return items;
+  }
+
   async listRecords(domain: string): Promise<DnsRecordInput[]> {
-    const response = await fetch(`${this.baseUrl}/domains/zones/${encodeURIComponent(domain)}/dns-records?pageSize=100`, {
-      headers: this.headers(),
-      cache: "no-store"
-    });
-    if (!response.ok) throw new Error(`GoDaddy DNS list failed (${response.status})`);
-    const payload = await response.json() as { records?: GoDaddyDnsRecord[] } | GoDaddyDnsRecord[];
-    const records = Array.isArray(payload) ? payload : payload.records ?? [];
+    const records = await this.listDetailed(domain);
     return records
-      .filter((record): record is GoDaddyDnsRecord & { type: DnsRecordInput["type"] } => ["A","AAAA","CNAME","TXT","MX","CAA"].includes(record.type))
-      .map(record => ({ type: record.type, name: record.name, value: record.data, ttl: record.ttl, priority: record.priority }));
+      .filter((record): record is GoDaddyDnsRecord & { type: DnsRecordInput["type"] } => SUPPORTED_RECORD_TYPES.has(record.type as DnsRecordInput["type"]))
+      .map(record => ({
+        type: record.type,
+        name: record.name,
+        value: record.data,
+        ttl: record.ttl,
+        priority: record.priority
+      }));
   }
 
   async upsertRecord(domain: string, record: DnsRecordInput): Promise<void> {
-    // GoDaddy v3 exposes create and delete operations. A governed "upsert" is implemented
-    // by checking the current record set first, then creating only when an identical record
-    // does not already exist. Replacements should be performed by the higher-level DNS
-    // change workflow so before/after evidence and rollback instructions are preserved.
-    const existing = await this.listRecords(domain);
-    if (existing.some(item => item.type === record.type && item.name === record.name && item.value === record.value)) return;
+    const existing = await this.listDetailed(domain);
+    const identical = existing.some(item =>
+      item.type === record.type &&
+      item.name === record.name &&
+      item.data === record.value &&
+      (record.priority == null || item.priority === record.priority)
+    );
+    if (identical) return;
 
     const response = await fetch(`${this.baseUrl}/domains/zones/${encodeURIComponent(domain)}/dns-records`, {
       method: "POST",
       headers: this.headers({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ type: record.type, name: record.name, data: record.value, ttl: record.ttl ?? 600, priority: record.priority })
+      body: JSON.stringify({
+        type: record.type,
+        name: record.name,
+        data: record.value,
+        ttl: Math.max(600, Math.min(record.ttl ?? 600, 86400)),
+        priority: record.priority
+      })
     });
     if (!response.ok) throw new Error(`GoDaddy DNS create failed (${response.status})`);
   }
 
   async deleteRecord(domain: string, record: DnsRecordInput): Promise<void> {
-    const url = new URL(`${this.baseUrl}/domains/zones/${encodeURIComponent(domain)}/dns-records`);
-    url.searchParams.set("type", record.type);
-    url.searchParams.set("name", record.name);
-    url.searchParams.set("data", record.value);
-    const response = await fetch(url, { method: "DELETE", headers: this.headers() });
-    if (!response.ok && response.status !== 404) throw new Error(`GoDaddy DNS delete failed (${response.status})`);
+    const existing = await this.listDetailed(domain);
+    const matches = existing.filter(item =>
+      item.type === record.type &&
+      item.name === record.name &&
+      item.data === record.value &&
+      (record.priority == null || item.priority === record.priority)
+    );
+
+    for (const match of matches) {
+      const response = await fetch(
+        `${this.baseUrl}/domains/zones/${encodeURIComponent(domain)}/dns-records/${encodeURIComponent(match.recordId)}`,
+        { method: "DELETE", headers: this.headers() }
+      );
+      if (!response.ok && response.status !== 404) throw new Error(`GoDaddy DNS delete failed (${response.status})`);
+    }
   }
 }
