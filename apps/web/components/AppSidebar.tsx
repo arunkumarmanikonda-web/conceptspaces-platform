@@ -8,6 +8,12 @@ const items=[
   ["Projects","/app/projects"],
   ["Site Truth","/app/site-truth"],
   ["Design Intelligence","/app/design"],
+  ["Engineering","/app/engineering"],
+  ["Architecture","/app/architecture"],
+  ["Interiors","/app/interiors"],
+  ["Structure","/app/structure"],
+  ["MEPF Systems","/app/mep"],
+  ["Coordination","/app/coordination"],
   ["REGULA™","/app/regula"],
   ["Models","/app/models"],
   ["Documents","/app/documents"],
@@ -35,6 +41,7 @@ export function AppSidebar(){
     <Link href="/app/admin/integrations" className="side-item">Integrations</Link>
     <Link href="/app/admin/tax-rules" className="side-item">Tax Rule Packs</Link>
     <Link href="/app/admin/ai-control" className="side-item">AI Control Plane</Link>
+    <Link href="/app/admin/engineering-engines" className="side-item">Engineering Engines</Link>
     <a className="side-item">Settings</a>
   </aside>;
 }
