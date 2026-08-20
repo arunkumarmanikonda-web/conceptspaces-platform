@@ -3,6 +3,7 @@ import { Brand } from "@/components/Brand";
 
 const items=[
   ["Dashboard","/app"],
+  ["CRM & Growth","/app/crm"],
   ["Projects","/app/projects"],
   ["Models","#"],
   ["Documents","#"],
@@ -10,7 +11,8 @@ const items=[
   ["Approvals","#"],
   ["Releases","#"],
   ["Quality","#"],
-  ["Commercial","#"],
+  ["Commercial","/app/commercial"],
+  ["Communications","/app/communications"],
   ["Analytics","#"]
 ];
 
