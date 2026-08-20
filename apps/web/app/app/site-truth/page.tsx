@@ -1,16 +1,20 @@
-const facts=[
-  ["Boundary geometry","Survey/DWG required","D","Not verified"],
-  ["Plot area","1,840.00 sqm","B","Source checked"],
-  ["Road width","24.00 m","B","Source checked"],
-  ["FAR / FSI","2.50","C","Client supplied"],
-  ["Ground coverage","40%","C","Client supplied"],
-  ["Height restriction","Pending NOCAS check","D","Not verified"]
-];
+import Link from "next/link";
+import { requireWorkspaceUser } from "@/lib/auth";
+import SiteGeometryClient,{type GeometryRow} from "@/components/SiteGeometryClient";
 
-export default function SiteTruthPage(){
-  return <>
-    <div className="topbar"><div><div className="demo">Project Truth / Site</div><h1>Site Truth</h1><div className="subtle">Coordinates, survey geometry, planning inputs, source confidence and assumptions</div></div><button className="btn">Upload Survey</button></div>
-    <div className="kpis">{[["Verified Facts","08"],["Assumptions","05"],["Critical Unknowns","02"],["Source Conflicts","00"],["Geometry State","B"]].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value">{v}</div><div className="subtle">Illustrative</div></div>)}</div>
-    <div className="panel-grid"><section className="panel"><h3>Planning & Site Facts</h3><table className="table"><thead><tr><th>Fact</th><th>Value</th><th>Confidence</th><th>Verification</th></tr></thead><tbody>{facts.map(row=><tr key={row[0]}><td>{row[0]}</td><td>{row[1]}</td><td><span className="badge">{row[2]}</span></td><td>{row[3]}</td></tr>)}</tbody></table></section><section className="panel"><h3>Geometry Rule</h3><p className="subtle">Four side lengths do not uniquely define an arbitrary quadrilateral. Concept Spaces will accept preliminary dimensions for feasibility, but a release-capable parcel model requires verified corner coordinates, bearings/angles/diagonal information or a survey/CAD/cadastral source.</p><div className="note"><b>No hallucination zone.</b> Missing geometry is reported as Not Verified. It is never invented.</div></section></div>
-  </>;
+export const dynamic="force-dynamic";
+type ProjectRow={id:string;code:string;name:string;typology:string;stage:string;criticality:string;status:string};
+type TruthRow={id:string;kind:string;record_key:string;value:unknown;unit?:string|null;source_type?:string|null;source_reference?:string|null;confidence:string;status:string;criticality:string;verified_by?:string|null;verified_at?:string|null;created_at:string};
+function displayValue(value:unknown,unit?:string|null){if(value&&typeof value==="object"&&!Array.isArray(value)){const v=value as Record<string,unknown>;if(v.value!==undefined)return `${String(v.value)}${unit?` ${unit}`:""}`;if(v.latitude||v.longitude)return `${String(v.latitude||"?")}, ${String(v.longitude||"?")}`;return JSON.stringify(value);}return `${String(value??"")}${unit?` ${unit}`:""}`;}
+export default async function SiteTruthPage({searchParams}:{searchParams:Promise<{project?:string}>}){
+ const {supabase}=await requireWorkspaceUser();const {data:projectData,error:projectError}=await supabase.rpc("list_accessible_projects");if(projectError)throw new Error(projectError.message);const projects=(projectData||[]) as ProjectRow[];const params=await searchParams;const project=projects.find(p=>p.id===params.project)||projects[0];let truth:TruthRow[]=[];let geometries:GeometryRow[]=[];
+ if(project){const [{data:t,error:te},{data:g,error:ge}]=await Promise.all([supabase.rpc("list_project_truth_state",{target_project_id:project.id}),supabase.rpc("list_project_site_geometry",{target_project_id:project.id})]);if(te)throw new Error(te.message);if(ge)throw new Error(ge.message);truth=(t||[]) as TruthRow[];geometries=(g||[]) as GeometryRow[];}
+ const verified=truth.filter(t=>t.status==="verified").length,assumptions=truth.filter(t=>t.kind==="assumption").length,unknowns=truth.filter(t=>t.status!=="verified"&&(t.criticality==="C2"||t.criticality==="C3"||t.criticality==="C4")).length;const latestGeometry=geometries[0];
+ return <>
+  <div className="topbar"><div><div className="demo">Project Truth / Site</div><h1>Site Truth + Precision Geometry</h1><div className="subtle">Verified facts, declared inputs, immutable parcel evidence and professional geometry authority.</div></div></div>
+  <section className="panel"><h3>Project</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{projects.map(p=><Link key={p.id} href={`/app/site-truth?project=${p.id}`} className={project?.id===p.id?"btn":"btn ghost"} style={{padding:"8px 11px"}}>{p.code} · {p.name}</Link>)}</div>{projects.length===0&&<div className="note">No accessible project exists yet. Create a project through the governed intake.</div>}</section>
+  {project&&<><div className="kpis" style={{marginTop:16}}>{[["Verified Facts",String(verified)],["Assumptions",String(assumptions)],["Critical Unknowns",String(unknowns)],["Geometry Evidence",String(geometries.length)],["Geometry State",latestGeometry?latestGeometry.verification.replaceAll("_"," "):"Not verified"]].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value" style={{fontSize:l==="Geometry State"?18:34}}>{v}</div><div className="subtle">Live database</div></div>)}</div>
+  <section className="panel" style={{marginTop:18}}><h3>Project Truth Ledger</h3><div style={{overflowX:"auto"}}><table className="table"><thead><tr><th>Record</th><th>Value</th><th>Source</th><th>Confidence</th><th>Status</th><th>Criticality</th></tr></thead><tbody>{truth.map(t=><tr key={t.id}><td><b>{t.record_key}</b><br/><span className="subtle">{t.kind}</span></td><td>{displayValue(t.value,t.unit)}</td><td>{t.source_type||"Unstated"}<br/><span className="subtle">{t.source_reference||"No reference"}</span></td><td><span className="badge">{t.confidence}</span></td><td>{t.status}</td><td>{t.criticality}</td></tr>)}{truth.length===0&&<tr><td colSpan={6} className="subtle">No Project Truth records have been captured yet.</td></tr>}</tbody></table></div></section>
+  <div style={{marginTop:18}}><SiteGeometryClient projectId={project.id} rows={geometries}/></div></>}
+ </>;
 }
