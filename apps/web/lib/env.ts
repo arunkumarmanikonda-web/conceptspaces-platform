@@ -1,6 +1,9 @@
+import { supabasePublicConfig } from "@/lib/public-runtime-config";
+
 export type EnvironmentState = {
   appUrl?: string;
   supabaseConfigured: boolean;
+  supabaseConfigSource: "environment" | "repository-public-default";
   resendConfigured: boolean;
   razorpayConfigured: boolean;
   aiSensyConfigured: boolean;
@@ -10,7 +13,10 @@ export type EnvironmentState = {
 export function environmentState(): EnvironmentState {
   return {
     appUrl: process.env.NEXT_PUBLIC_APP_URL,
-    supabaseConfigured: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY),
+    supabaseConfigured: Boolean(
+      supabasePublicConfig.url && supabasePublicConfig.publishableKey
+    ),
+    supabaseConfigSource: supabasePublicConfig.source,
     resendConfigured: Boolean(process.env.RESEND_API_KEY),
     razorpayConfigured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
     aiSensyConfigured: Boolean(process.env.AISENSY_API_KEY),
