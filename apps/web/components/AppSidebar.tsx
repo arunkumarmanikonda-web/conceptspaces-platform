@@ -6,6 +6,10 @@ const items=[
   ["Ask Your Project™","/app/ask"],
   ["CRM & Growth","/app/crm"],
   ["Projects","/app/projects"],
+  ["Feasibility","/app/feasibility"],
+  ["Programme","/app/programme"],
+  ["Climate & Environment","/app/climate"],
+  ["Development Economics","/app/economics"],
   ["Site Truth","/app/site-truth"],
   ["Design Intelligence","/app/design"],
   ["Engineering","/app/engineering"],
@@ -39,6 +43,7 @@ export function AppSidebar(){
     <Link href="/app/admin" className="side-item">Super Admin</Link>
     <Link href="/app/admin/access" className="side-item">Identity & Authority</Link>
     <Link href="/app/admin/integrations" className="side-item">Integrations</Link>
+    <Link href="/app/admin/typologies" className="side-item">Typology Packs</Link>
     <Link href="/app/admin/tax-rules" className="side-item">Tax Rule Packs</Link>
     <Link href="/app/admin/ai-control" className="side-item">AI Control Plane</Link>
     <Link href="/app/admin/engineering-engines" className="side-item">Engineering Engines</Link>
