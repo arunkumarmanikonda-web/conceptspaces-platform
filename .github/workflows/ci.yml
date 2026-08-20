@@ -12,14 +12,18 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: npm install
+      - name: Repository security and migration gates
+        run: node scripts/quality-gates.mjs
       - name: TypeScript
         run: npm run typecheck
+      - name: Test suites
+        run: npm test
       - name: Production build
         run: npm run build
