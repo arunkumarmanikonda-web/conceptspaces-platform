@@ -8,9 +8,6 @@ const textExt=new Set([".ts",".tsx",".js",".mjs",".json",".yml",".yaml",".md",".
 const self="scripts/quality-gates.mjs";
 const failures=[];
 
-// These migrations pre-date the transaction-wrapper gate and are now an immutable
-// production baseline. They are exempt only while their exact Git blob identity is
-// unchanged. Any edit invalidates the exemption and the stricter rule immediately applies.
 const legacyMigrationBlobs=new Map([
   ["supabase/migrations/0001_foundation.sql","704b7b461715b9457acd76d52b00ed99ce96b296"],
   ["supabase/migrations/0002_integrations.sql","a8700f923094af38224f656b2ebb5b019467fd84"],
@@ -33,6 +30,70 @@ async function walk(dir){
     else out.push(full);
   }
   return out;
+}
+
+function sqlLexicalErrors(sql){
+  const errors=[];
+  let state="normal";
+  let dollarTag="";
+  let depth=0;
+  let line=1;
+  let blockStart=0;
+  let quoteStart=0;
+  let dollarStart=0;
+
+  for(let i=0;i<sql.length;i++){
+    const ch=sql[i];
+    const next=sql[i+1];
+    if(ch==="\n") line++;
+
+    if(state==="line-comment"){
+      if(ch==="\n") state="normal";
+      continue;
+    }
+    if(state==="block-comment"){
+      if(ch==="*"&&next==="/"){state="normal";i++;}
+      continue;
+    }
+    if(state==="single"){
+      if(ch==="'"&&next==="'"){i++;continue;}
+      if(ch==="'") state="normal";
+      continue;
+    }
+    if(state==="double"){
+      if(ch==='"'&&next==='"'){i++;continue;}
+      if(ch==='"') state="normal";
+      continue;
+    }
+    if(state==="dollar"){
+      if(sql.startsWith(dollarTag,i)){
+        i+=dollarTag.length-1;
+        state="normal";
+      }
+      continue;
+    }
+
+    if(ch==="-"&&next==="-"){state="line-comment";i++;continue;}
+    if(ch==="/"&&next==="*"){state="block-comment";blockStart=line;i++;continue;}
+    if(ch==="'"){state="single";quoteStart=line;continue;}
+    if(ch==='"'){state="double";quoteStart=line;continue;}
+    if(ch==="$"){
+      const match=sql.slice(i).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/);
+      if(match){dollarTag=match[0];dollarStart=line;state="dollar";i+=dollarTag.length-1;continue;}
+    }
+    if(ch==="(") depth++;
+    if(ch===")"){
+      depth--;
+      if(depth<0){errors.push(`unexpected closing parenthesis near line ${line}`);depth=0;}
+    }
+  }
+
+  if(depth!==0) errors.push(`unbalanced parentheses: ${depth>0?depth+" opening":"extra closing"}`);
+  if(state==="block-comment") errors.push(`unterminated block comment starting near line ${blockStart}`);
+  if(state==="single") errors.push(`unterminated single-quoted string starting near line ${quoteStart}`);
+  if(state==="double") errors.push(`unterminated quoted identifier starting near line ${quoteStart}`);
+  if(state==="dollar") errors.push(`unterminated dollar-quoted body ${dollarTag} starting near line ${dollarStart}`);
+  return errors;
 }
 
 const files=await walk(root);
@@ -68,6 +129,7 @@ for(const file of files.filter(f=>relative(root,f).replaceAll("\\","/").startsWi
   if(text.includes("create table") && !text.includes("enable row level security")){
     failures.push(`${rel}: table migration has no RLS enablement`);
   }
+  for(const err of sqlLexicalErrors(original)) failures.push(`${rel}: ${err}`);
 }
 
 if(failures.length){
