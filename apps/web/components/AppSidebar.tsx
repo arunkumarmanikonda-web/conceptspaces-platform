@@ -22,6 +22,7 @@ export function AppSidebar(){
     <div className="side-caption">Platform</div>
     <Link href="/app/admin" className="side-item">Super Admin</Link>
     <Link href="/app/admin/integrations" className="side-item">Integrations</Link>
+    <Link href="/app/admin/ai-models" className="side-item">AI Model Registry</Link>
     <a className="side-item">Settings</a>
   </aside>;
 }
