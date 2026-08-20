@@ -1,5 +1,5 @@
-import { ProjectIntakeWizard } from "@/components/ProjectIntakeWizard";
+import { ProjectIntakeWizardLive } from "@/components/ProjectIntakeWizardLive";
 
 export default function NewProject(){
-  return <ProjectIntakeWizard/>;
+  return <ProjectIntakeWizardLive/>;
 }
