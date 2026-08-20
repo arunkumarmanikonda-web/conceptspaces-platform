@@ -1,15 +1,37 @@
-const docs=[
-  ["A-101","General Arrangement Plan","Architecture","P03","For Review"],
-  ["A-301","Building Sections","Architecture","P02","Shared"],
-  ["S-101","Structural Framing Plan","Structure","P01","For Approval"],
-  ["M-201","HVAC Zoning","MEP","P01","Work in Progress"],
-  ["ID-401","Typical Room Interior Elevation","Interiors","P02","For Review"]
-];
+import Link from "next/link";
+import { requireWorkspaceUser } from "@/lib/auth";
+import CDEWorkspace from "@/components/CDEWorkspace";
 
-export default function DocumentsPage(){
+export const dynamic="force-dynamic";
+
+type Project={id:string;code:string;name:string};
+type CDEData={documents?:Array<Record<string,unknown>>;models?:Array<Record<string,unknown>>;transmittals?:Array<Record<string,unknown>>};
+
+export default async function DocumentsPage({searchParams}:{searchParams:Promise<{project?:string}>}){
+  const {supabase}=await requireWorkspaceUser();
+  const {data:projectData,error:projectError}=await supabase.rpc("list_accessible_projects");
+  if(projectError) throw new Error(projectError.message);
+  const projects=(projectData||[]) as Project[];
+  const params=await searchParams;
+  const selected=projects.find(p=>p.id===params.project)||projects[0];
+  let cde:CDEData={documents:[],models:[],transmittals:[]};
+  if(selected){
+    const {data,error}=await supabase.rpc("list_project_cde",{target_project_id:selected.id});
+    if(error) throw new Error(error.message);
+    cde=(data||{}) as CDEData;
+  }
+  const documents=(cde.documents||[]) as never[];
+  const models=(cde.models||[]) as never[];
+  const transmittals=(cde.transmittals||[]) as never[];
+  const review=documents.filter((d:{status:string})=>d.status==="for_review").length;
+  const approval=documents.filter((d:{status:string})=>d.status==="for_approval").length;
+  const issued=documents.filter((d:{status:string})=>d.status==="issued").length;
+  const superseded=documents.filter((d:{status:string})=>d.status==="superseded").length;
+
   return <>
-    <div className="topbar"><div><div className="demo">Common Data Environment</div><h1>Documents & Drawings</h1><div className="subtle">WIP → Shared → Published → Archived, with immutable versions and transmittals</div></div><button className="btn">Upload / Register</button></div>
-    <div className="kpis">{[["Registered Documents","128"],["For Review","16"],["For Approval","07"],["Issued","42"],["Superseded","19"]].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value">{v}</div><div className="subtle">Illustrative</div></div>)}</div>
-    <section className="panel" style={{marginTop:16}}><h3>Drawing Register</h3><table className="table"><thead><tr><th>Number</th><th>Title</th><th>Discipline</th><th>Revision</th><th>Status</th></tr></thead><tbody>{docs.map(row=><tr key={row[0]}><td>{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td><span className="badge">{row[4]}</span></td></tr>)}</tbody></table></section>
+    <div className="topbar"><div><div className="demo">Live Common Data Environment</div><h1>Documents, Models & Transmittals</h1><div className="subtle">Private project storage · immutable SHA-256 versions · WIP → Shared → Published → Archived</div></div></div>
+    <div className="kpis">{[["Registered",String(documents.length)],["For Review",String(review)],["For Approval",String(approval)],["Issued",String(issued)],["Superseded",String(superseded)]].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value">{v}</div><div className="subtle">Live project state</div></div>)}</div>
+    <section className="panel" style={{marginTop:16}}><h3>Project CDE</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{projects.map(p=><Link className={selected?.id===p.id?"btn":"btn ghost"} style={{padding:"9px 12px"}} key={p.id} href={`/app/documents?project=${p.id}`}>{p.code} · {p.name}</Link>)}</div>{projects.length===0&&<div className="note">No accessible project exists yet. Create a project through Project Setup before registering controlled information.</div>}</section>
+    {selected&&<CDEWorkspace projectId={selected.id} documents={documents} models={models} transmittals={transmittals}/>} 
   </>;
 }
