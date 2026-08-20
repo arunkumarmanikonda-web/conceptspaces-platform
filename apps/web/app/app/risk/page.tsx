@@ -1,0 +1,7 @@
+const risks=[
+  ['RSK-001','Regulatory source pending','Regulatory','4','5','Critical','Mitigating'],
+  ['RSK-002','Survey geometry unverified','Site Truth','3','5','High','Open'],
+  ['RSK-003','Cost benchmark ageing','Commercial','3','3','Medium','Mitigating'],
+  ['RSK-004','Professional capacity constraint','Resource','2','4','Medium','Open']
+];
+export default function RiskPage(){return <><div className="topbar"><div><div className="demo">Enterprise Risk / Early Warning</div><h1>Risk Register</h1><div className="subtle">Project and enterprise risks remain linked to source evidence, accountable owners, treatments and residual exposure.</div></div><button className="btn">Raise Risk</button></div><div className="panel-grid"><section className="panel"><h3>Open Risks</h3><table className="table"><thead><tr><th>Code</th><th>Risk</th><th>Category</th><th>P</th><th>I</th><th>Level</th><th>State</th></tr></thead><tbody>{risks.map(r=><tr key={r[0]}>{r.map((v,i)=><td key={i}>{i===5||i===6?<span className="badge">{v}</span>:v}</td>)}</tr>)}</tbody></table></section><section className="panel"><h3>Risk Intelligence</h3><p className="subtle">Risk signals may be generated from unresolved assumptions, regulatory change, design coordination, programme slippage, cost variance, commercial exposure and site evidence.</p><div className="note"><b>AI can raise a risk, not accept it.</b> Formal risk acceptance remains a governed human decision with rationale and review date.</div></section></div></>}

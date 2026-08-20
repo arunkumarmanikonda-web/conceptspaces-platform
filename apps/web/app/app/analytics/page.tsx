@@ -1,0 +1,9 @@
+const kpis=[
+  ['KPI-TRUTH','Verified Project Truth Coverage','%','92','95','B'],
+  ['KPI-REQ','Requirements Satisfied','%','84','90','B'],
+  ['KPI-CRIT','Unresolved Critical Defects','count','0','0','A'],
+  ['KPI-COST','Cost Variance','%','2.8','≤5','C'],
+  ['KPI-SLA','Workflow SLA Compliance','%','96','95','B'],
+  ['KPI-CASH','Receivable Days','days','24','≤30','B']
+];
+export default function AnalyticsPage(){return <><div className="topbar"><div><div className="demo">BI / CXO Intelligence</div><h1>Analytics & Early Warning</h1><div className="subtle">Decision metrics retain calculation provenance, source confidence and project/organisation dimensions.</div></div><button className="btn">Configure Dashboard</button></div><div className="kpis">{[['Portfolio Projects','03'],['Critical Escapes','00'],['SLA Compliance','96%'],['Open Risks','04'],['Cash Exposure','₹0']].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value">{v}</div><div className="subtle">Illustrative</div></div>)}</div><div className="panel-grid"><section className="panel"><h3>KPI Register</h3><table className="table"><thead><tr><th>Code</th><th>KPI</th><th>Unit</th><th>Value</th><th>Target</th><th>Confidence</th></tr></thead><tbody>{kpis.map(r=><tr key={r[0]}>{r.map((v,i)=><td key={i}>{i===5?<span className="badge">{v}</span>:v}</td>)}</tr>)}</tbody></table></section><section className="panel"><h3>Metric Governance</h3><p className="subtle">A dashboard number is not trusted because it looks precise. Each KPI has a calculation reference, observation timestamp, data source and confidence.</p><div className="note"><b>No vanity metrics.</b> The platform prioritises decision, risk, quality, cash, programme and release assurance signals over decorative activity counts.</div></section></div></>}
