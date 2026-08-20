@@ -42,6 +42,8 @@ const items=[
   ["Commercial","/app/commercial"],
   ["Finance ERP","/app/finance"],
   ["Communications","/app/communications"],
+  ["Events","/app/events"],
+  ["Integration Monitor","/app/integration-monitor"],
   ["Analytics","/app/analytics"]
 ];
 
@@ -54,6 +56,8 @@ export function AppSidebar(){
     <Link href="/app/admin" className="side-item">Super Admin</Link>
     <Link href="/app/admin/access" className="side-item">Identity & Authority</Link>
     <Link href="/app/admin/integrations" className="side-item">Integrations</Link>
+    <Link href="/app/admin/api-access" className="side-item">API Access</Link>
+    <Link href="/app/admin/event-catalog" className="side-item">Event Catalog</Link>
     <Link href="/app/admin/workflows" className="side-item">Workflow Definitions</Link>
     <Link href="/app/admin/system-config" className="side-item">System Configuration</Link>
     <Link href="/app/admin/cms" className="side-item">CMS Governance</Link>
