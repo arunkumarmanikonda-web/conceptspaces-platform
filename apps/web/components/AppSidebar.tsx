@@ -18,6 +18,7 @@ const items=[
   ["Site & Delivery","/app/site"],
   ["Digital Twin","/app/twin"],
   ["Commercial","/app/commercial"],
+  ["Finance ERP","/app/finance"],
   ["Communications","/app/communications"],
   ["Analytics","#"]
 ];
@@ -31,6 +32,7 @@ export function AppSidebar(){
     <Link href="/app/admin" className="side-item">Super Admin</Link>
     <Link href="/app/admin/access" className="side-item">Identity & Authority</Link>
     <Link href="/app/admin/integrations" className="side-item">Integrations</Link>
+    <Link href="/app/admin/tax-rules" className="side-item">Tax Rule Packs</Link>
     <a className="side-item">Settings</a>
   </aside>;
 }
