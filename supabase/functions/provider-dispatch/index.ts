@@ -21,12 +21,12 @@ Deno.serve(async(req:Request)=>{
     if(materialError||!materialData)throw new Error(materialError?.message||"provider_material_unavailable");const material=materialData as RuntimeMaterial;
     const result=message.channel==="email"?await sendResend(message,material):message.channel==="whatsapp"?await sendAiSensy(message,material):await sendFast2Sms(message,material);
     await service.rpc("complete_provider_message",{target_message_id:message.id,target_status:result.status,target_provider_message_id:result.providerMessageId||null,target_error:null});
-    await service.rpc("record_provider_health",{target_provider_key:message.provider_key,target_environment:message.environment,target_status:"healthy",target_latency_ms:Date.now()-start,target_error_code:null});
+    await service.rpc("record_provider_health",{target_organisation_id:message.organisation_id,target_provider_key:message.provider_key,target_environment:message.environment,target_status:"healthy",target_latency_ms:Date.now()-start,target_error_code:null});
     return reply({ok:true,message_id:message.id,provider:message.provider_key,status:result.status,provider_message_id:result.providerMessageId||null});
   }catch(error){
     const code=error instanceof Error?error.message.slice(0,240):"provider_dispatch_failed";
     await service.rpc("complete_provider_message",{target_message_id:message.id,target_status:"failed",target_provider_message_id:null,target_error:{code}});
-    await service.rpc("record_provider_health",{target_provider_key:message.provider_key,target_environment:message.environment,target_status:"degraded",target_latency_ms:Date.now()-start,target_error_code:code.slice(0,120)});
+    await service.rpc("record_provider_health",{target_organisation_id:message.organisation_id,target_provider_key:message.provider_key,target_environment:message.environment,target_status:"degraded",target_latency_ms:Date.now()-start,target_error_code:code.slice(0,120)});
     return reply({error:code,message_id:message.id},502);
   }
 });
