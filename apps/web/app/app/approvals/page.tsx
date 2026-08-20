@@ -1,15 +1,35 @@
-const approvals=[
-  ["APR-101","DD Architecture Set","Release","C3","Lead Architect","Pending"],
-  ["APR-102","Structural Framing P02","Document","C4","Structural Engineer","Pending"],
-  ["APR-103","Façade Material Option B","Design Option","C2","Client","Approved"],
-  ["APR-104","Proposal PR-2026-003","Commercial","C2","Commercial Authority","Approved with comments"]
-];
+import { revalidatePath } from "next/cache";
+import { requireWorkspaceUser } from "@/lib/auth";
 
-export default function ApprovalsPage(){
+export const dynamic="force-dynamic";
+type Project={id:string;code:string;name:string};
+type Approval={id:string;project_id?:string;resource_type:string;resource_id:string;requested_from?:string|null;role_required?:string|null;criticality:string;decision:string;comments?:string|null;requested_by?:string|null;requested_at:string;decided_at?:string|null;decision_evidence_hash?:string|null};
+
+async function requestApproval(formData:FormData){
+  "use server";const {supabase}=await requireWorkspaceUser();
+  const payload={project_id:String(formData.get("project_id")||""),resource_type:String(formData.get("resource_type")||"document"),resource_id:String(formData.get("resource_id")||""),requested_from:String(formData.get("requested_from")||""),role_required:String(formData.get("role_required")||""),criticality:String(formData.get("criticality")||"C1"),comments:String(formData.get("comments")||"")};
+  const {error}=await supabase.rpc("request_governed_approval",{input_payload:payload});if(error) throw new Error(error.message);revalidatePath("/app/approvals");
+}
+async function decideApproval(formData:FormData){
+  "use server";const {supabase}=await requireWorkspaceUser();
+  const {error}=await supabase.rpc("decide_governed_approval",{target_approval_id:String(formData.get("approval_id")||""),new_decision:String(formData.get("decision")||""),decision_comments:String(formData.get("decision_comments")||""),reviewed_resource_hash:String(formData.get("reviewed_resource_hash")||"")});
+  if(error) throw new Error(error.message);revalidatePath("/app/approvals");
+}
+
+export default async function ApprovalsPage(){
+  const {supabase,user}=await requireWorkspaceUser();
+  const {data:projectData,error:projectError}=await supabase.rpc("list_accessible_projects");if(projectError) throw new Error(projectError.message);
+  const projects=(projectData||[]) as Project[];const projectMap=new Map(projects.map(p=>[p.id,`${p.code} · ${p.name}`]));
+  const approvalBatches=await Promise.all(projects.map(async p=>{const {data,error}=await supabase.rpc("list_project_approvals",{target_project_id:p.id});if(error) throw new Error(error.message);return (data||[]).map((a:Approval)=>({...a,project_id:p.id}));}));
+  const approvals=approvalBatches.flat() as Approval[];
+  const pending=approvals.filter(a=>a.decision==="pending").length;const critical=approvals.filter(a=>a.decision==="pending"&&["C3","C4"].includes(a.criticality)).length;const assigned=approvals.filter(a=>a.decision==="pending"&&a.requested_from===user.id).length;const approved=approvals.filter(a=>["approved","approved_with_comments"].includes(a.decision)).length;const rejected=approvals.filter(a=>a.decision==="rejected").length;
   return <>
-    <div className="topbar"><div><div className="demo">Maker-Checker / Authority</div><h1>Approvals</h1><div className="subtle">Role, discipline, scope and criticality-aware decisions with immutable evidence</div></div><button className="btn">Request Approval</button></div>
-    <div className="kpis">{[["Pending","09"],["C3 / C4","03"],["Client Decisions","04"],["Due Today","02"],["Rejected","01"]].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value">{v}</div><div className="subtle">Illustrative</div></div>)}</div>
-    <section className="panel" style={{marginTop:16}}><h3>Approval Queue</h3><table className="table"><thead><tr><th>Reference</th><th>Resource</th><th>Type</th><th>Criticality</th><th>Authority</th><th>Decision</th></tr></thead><tbody>{approvals.map(row=><tr key={row[0]}><td>{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td>{row[4]}</td><td><span className="badge">{row[5]}</span></td></tr>)}</tbody></table></section>
-    <div className="note"><b>Authority boundary.</b> Approval is valid only when the approver is eligible for the exact resource, project scope, discipline and criticality. The approval evidence is bound to the reviewed version/hash so later modifications automatically invalidate it.</div>
+    <div className="topbar"><div><div className="demo">Live Maker-Checker / Authority</div><h1>Approvals</h1><div className="subtle">Role, scope, criticality and professional-eligibility-aware decisions bound to reviewed resource hashes.</div></div></div>
+    <div className="kpis">{[["Pending",String(pending)],["Pending C3/C4",String(critical)],["Assigned To Me",String(assigned)],["Approved",String(approved)],["Rejected",String(rejected)]].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value">{v}</div><div className="subtle">Live workspace state</div></div>)}</div>
+    <div className="panel-grid">
+      <section className="panel"><h3>Request Approval</h3><form action={requestApproval}><div className="field-grid"><div className="field"><label>Project</label><select name="project_id" required><option value="">Select</option>{projects.map(p=><option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}</select></div><div className="field"><label>Resource Type</label><select name="resource_type" defaultValue="document"><option value="document">Document</option><option value="model">Model</option><option value="design_option">Design Option</option><option value="release">Release</option><option value="commercial">Commercial</option><option value="change">Change</option></select></div><div className="field"><label>Resource UUID</label><input name="resource_id" required placeholder="Version-controlled resource UUID"/></div><div className="field"><label>Criticality</label><select name="criticality" defaultValue="C1">{["C0","C1","C2","C3","C4"].map(c=><option key={c}>{c}</option>)}</select></div><div className="field"><label>Required Role</label><select name="role_required" defaultValue="lead_architect"><option value="lead_architect">Lead Architect</option><option value="architect">Architect</option><option value="structural_engineer">Structural Engineer</option><option value="mep_engineer">MEP Engineer</option><option value="quantity_surveyor">Quantity Surveyor</option><option value="regulatory_reviewer">Regulatory Reviewer</option><option value="client">Client</option><option value="project_manager">Project Manager</option><option value="finance">Finance</option></select></div><div className="field"><label>Specific Approver UUID</label><input name="requested_from" placeholder="Optional"/></div><div className="field" style={{gridColumn:"1 / -1"}}><label>Request Note</label><textarea name="comments" rows={3}/></div></div><button className="btn" style={{marginTop:16}}>Request Approval</button></form></section>
+      <section className="panel"><h3>Authority Boundary</h3><p className="subtle">C3/C4 approval requires both the exact professional role and a currently verified professional credential. Super Admin cannot substitute for professional eligibility.</p><div className="note"><b>Version binding.</b> Every decision requires the reviewed resource hash. A later resource revision therefore cannot silently inherit the old approval.</div></section>
+    </div>
+    <section className="panel" style={{marginTop:16}}><h3>Approval Queue</h3><div style={{overflowX:"auto"}}><table className="table"><thead><tr><th>Project</th><th>Resource</th><th>Criticality</th><th>Authority</th><th>Decision</th><th>Action / Evidence</th></tr></thead><tbody>{approvals.map(a=><tr key={a.id}><td>{a.project_id?projectMap.get(a.project_id)||a.project_id.slice(0,8):"—"}</td><td>{a.resource_type}<div className="subtle">{a.resource_id.slice(0,8)}</div></td><td>{a.criticality}</td><td>{a.role_required||"Unspecified"}{a.requested_from&&<div className="subtle">Assigned {a.requested_from.slice(0,8)}</div>}</td><td><span className="badge">{a.decision}</span>{a.decision_evidence_hash&&<div className="subtle">Hash {a.decision_evidence_hash.slice(0,12)}…</div>}</td><td>{a.decision==="pending"?<form action={decideApproval} style={{display:"grid",gap:6,minWidth:220}}><input type="hidden" name="approval_id" value={a.id}/><select name="decision" defaultValue="approved"><option value="approved">Approve</option><option value="approved_with_comments">Approve with comments</option><option value="rejected">Reject</option></select><input name="reviewed_resource_hash" required placeholder="Reviewed version/content hash"/><input name="decision_comments" placeholder="Decision comments"/><button className="btn ghost" style={{padding:8}}>Record Decision</button>{a.requested_by===user.id&&["C2","C3","C4"].includes(a.criticality)&&<div className="subtle">Maker cannot approve own controlled action.</div>}</form>:<div className="subtle">{a.comments||"Decided"}</div>}</td></tr>)}{approvals.length===0&&<tr><td colSpan={6} className="subtle">No approvals yet.</td></tr>}</tbody></table></div></section>
   </>;
 }
