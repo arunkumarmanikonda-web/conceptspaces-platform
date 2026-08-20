@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="504" height="135" viewBox="0 0 504 135" role="img" aria-labelledby="title desc">
+  <title id="title">Concept Spaces</title>
+  <desc id="desc">Concept Spaces. Intelligence, Given Form.</desc>
+  <rect width="504" height="135" fill="none"/>
+  <g transform="translate(8 19)">
+    <polygon points="0,26 26,10 40,18 15,34" fill="#d7d8d8"/>
+    <polygon points="0,26 15,34 15,55 0,47" fill="#777b80"/>
+    <polygon points="15,34 40,18 40,38 26,47" fill="#f2f3f3"/>
+    <polygon points="26,47 51,61 37,69 15,55" fill="#c7c9cb"/>
+    <polygon points="51,61 37,69 37,89 51,81" fill="#5a6777"/>
+    <polygon points="15,55 37,69 37,89 15,76" fill="#eef0f2"/>
+    <polygon points="26,47 40,38 61,50 51,61" fill="#0f1d33"/>
+    <polygon points="61,50 51,61 51,81 61,70" fill="#33465e"/>
+  </g>
+  <line x1="90" y1="27" x2="90" y2="107" stroke="#8f98a5" stroke-width="1.5"/>
+  <text x="122" y="65" font-family="Satoshi, 'Space Grotesk', Inter, Arial, sans-serif" font-size="24" font-weight="500" letter-spacing="7" fill="#0f1d33">CONCEPT SPACES</text>
+  <line x1="122" y1="87" x2="158" y2="87" stroke="#a7acb3" stroke-width="1"/>
+  <text x="170" y="91" font-family="Satoshi, 'Space Grotesk', Inter, Arial, sans-serif" font-size="8.5" font-weight="500" letter-spacing="2" fill="#0f1d33">INTELLIGENCE, GIVEN FORM.</text>
+  <line x1="365" y1="87" x2="405" y2="87" stroke="#a7acb3" stroke-width="1"/>
+</svg>

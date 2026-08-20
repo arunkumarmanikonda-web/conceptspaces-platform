@@ -1,0 +1,11 @@
+{
+  "name": "@conceptspaces/governance",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "types": "./src/release-policy.ts",
+  "exports": {".": "./src/release-policy.ts"},
+  "scripts": {"typecheck": "tsc -p tsconfig.json --noEmit"},
+  "dependencies": {"@conceptspaces/domain": "0.1.0"},
+  "devDependencies": {"typescript": "^5.8.3"}
+}
