@@ -10,6 +10,7 @@ Build Pack 30 activates governed project configuration control. The former illus
 - Branch names are validated and `main` is reserved.
 - Active option branches can be frozen, reactivated or abandoned with a mandatory audit reason.
 - Applied project changes create immutable commits with parent hash, analysis hash, source-object references, author and message.
+- The exact applied commit hash is retained on the governed change request so a later branch advance cannot be merged under an older approval.
 - Governed merges require an applied change on the source branch and create a two-parent merge commit.
 - Merged and abandoned branches are terminal.
 
@@ -23,7 +24,7 @@ A change request records:
 - declared affected disciplines;
 - lifecycle state from `draft` through analysis, approval and application.
 
-`analyze_project_change()` freezes a configuration baseline and inventories the current downstream blast radius:
+`analyze_project_change()` freezes both the project configuration baseline and the current branch head, then inventories the current downstream blast radius:
 
 - project requirements;
 - latest REGULA compliance findings;
@@ -35,7 +36,7 @@ A change request records:
 - engineering calculations in affected disciplines;
 - open project programme/work tasks.
 
-The analysis stores estimated cost delta, schedule delta, Decision Reversal Cost™, criticality, confidence and an immutable `analysis_hash`. A new analysis supersedes the prior analysis rather than rewriting it.
+The analysis stores estimated cost delta, schedule delta, Decision Reversal Cost™, criticality, confidence, the analyzed branch-head hash and an immutable `analysis_hash`. A new analysis supersedes the prior analysis rather than rewriting it.
 
 ## Fail-closed approval and application
 
@@ -44,9 +45,9 @@ The analysis stores estimated cost delta, schedule delta, Decision Reversal Cost
 - Approval requests explicitly cite the exact analysis hash.
 - C3/C4 decisions therefore inherit independent maker-checker and verified professional eligibility controls.
 - Synchronisation refuses an approval whose decision evidence hash does not equal the latest analysis hash.
-- Approval/application is blocked if the live project configuration hash changes after analysis.
-- Application creates an immutable Building Git commit; it does not silently mutate design-domain data.
-- Branch merge is separately governed and remains blocked if the project baseline has changed since analysis.
+- Approval/application is blocked if either the live project configuration hash or the analyzed branch head changes after analysis.
+- Application creates an immutable Building Git commit and records that exact commit hash on the change request; it does not silently mutate design-domain data.
+- Branch merge is separately governed and is blocked if the project baseline changed, the source branch moved beyond the approved applied commit, or the approved change is otherwise no longer current.
 
 ## Live workspaces
 
@@ -60,12 +61,15 @@ Production Supabase migrations:
 
 - `0049_configuration_control_foundation.sql`
 - `0050_change_impact_execution.sql`
+- `0051_configuration_branch_freshness.sql`
 
 Verification:
 
-- Supabase security advisor: zero findings after both migrations.
+- Supabase security advisor: zero findings after all three Pack 30 migrations.
 - Configuration/change RPCs are executable by `authenticated` only through RLS-gated governed mutation phases.
 - `project_change_requests` has RLS enabled.
+- Exact project-configuration freshness and exact analyzed branch-head freshness are both required before approval/application.
+- Applied changes retain the exact applied commit hash, and governed merge rejects a source branch that advanced beyond it.
 - Production currently contains zero project branches and zero change requests.
 - Production currently contains zero active `project.project_members`, so no tenant/project data was fabricated merely to run a destructive smoke transaction. Runtime verification therefore used schema/function/RLS checks plus application compilation; the first real project member can bootstrap `main` from the current project state through the workspace.
 
