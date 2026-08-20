@@ -1,0 +1,7 @@
+const obligations=[
+  ['CMP-DPDP-01','Privacy','India','Partial','Consent + purpose + retention evidence'],
+  ['CMP-COA-01','Professional Authority','India','Compliant','Credential + signatory controls'],
+  ['CMP-AUDIT-01','Auditability','Platform','Compliant','Critical transition evidence'],
+  ['CMP-BCP-01','Continuity','Platform','Partial','DR test evidence pending']
+];
+export default function CompliancePage(){return <><div className="topbar"><div><div className="demo">Compliance / Obligation Control</div><h1>Compliance Register</h1><div className="subtle">Versioned obligations, applicability, controls, assessments and evidence across platform and project operations.</div></div><button className="btn">Assess Obligation</button></div><div className="panel-grid"><section className="panel"><h3>Obligations</h3><table className="table"><thead><tr><th>Code</th><th>Domain</th><th>Jurisdiction</th><th>State</th><th>Evidence</th></tr></thead><tbody>{obligations.map(r=><tr key={r[0]}><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td><span className="badge">{r[3]}</span></td><td>{r[4]}</td></tr>)}</tbody></table></section><section className="panel"><h3>Applicability Before Assessment</h3><p className="subtle">An obligation is not marked compliant until applicability, effective date, jurisdiction, owner and required evidence are resolved.</p><div className="note"><b>Source-linked compliance.</b> Administrative dashboards do not become legal conclusions. Published obligations retain source and review provenance.</div></section></div></>}
