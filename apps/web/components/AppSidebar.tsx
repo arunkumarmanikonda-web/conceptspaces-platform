@@ -1,0 +1,27 @@
+import Link from "next/link";
+import { Brand } from "@/components/Brand";
+
+const items=[
+  ["Dashboard","/app"],
+  ["Projects","/app/projects"],
+  ["Models","#"],
+  ["Documents","#"],
+  ["Issues","#"],
+  ["Approvals","#"],
+  ["Releases","#"],
+  ["Quality","#"],
+  ["Commercial","#"],
+  ["Analytics","#"]
+];
+
+export function AppSidebar(){
+  return <aside className="sidebar">
+    <div className="logo"><Brand light/></div>
+    <div className="side-caption">Workspace</div>
+    {items.map(([label,href],index)=><Link key={label} href={href} className={`side-item ${index===0?'active':''}`}>{label}</Link>)}
+    <div className="side-caption">Platform</div>
+    <Link href="/app/admin" className="side-item">Super Admin</Link>
+    <a className="side-item">Integrations</a>
+    <a className="side-item">Settings</a>
+  </aside>;
+}
