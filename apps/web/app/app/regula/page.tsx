@@ -1,16 +1,16 @@
-const checks=[
-  ["REG-SETBACK-001","Setback applicability","Green","Pass"],
-  ["REG-FAR-004","Permissible FAR / FSI","Amber","Requires interpretation"],
-  ["REG-HEIGHT-006","Airport height overlay","Red","Not verified"],
-  ["REG-FIRE-012","Fire tender access","Green","Pass"],
-  ["REG-PARK-021","Parking requirement","Amber","Pass"]
-];
+import Link from "next/link";
+import { requireWorkspaceUser } from "@/lib/auth";
+import RegulaRuntimeClient,{type RegulaState} from "@/components/RegulaRuntimeClient";
 
-export default function RegulaPage(){
-  return <>
-    <div className="topbar"><div><div className="demo">REGULA™ / Jurisdiction Engine</div><h1>Regulatory Intelligence</h1><div className="subtle">Effective-date-aware applicability, precedence, evidence and professional interpretation</div></div><button className="btn">Run Compliance</button></div>
-    <div className="kpis">{[["Applicable Packs","06"],["Rules Evaluated","31"],["Green","24"],["Amber","06"],["Red","01"]].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value">{v}</div><div className="subtle">Illustrative</div></div>)}</div>
-    <section className="panel" style={{marginTop:16}}><h3>Applicability & Findings</h3><table className="table"><thead><tr><th>Rule</th><th>Subject</th><th>Disposition</th><th>Status</th></tr></thead><tbody>{checks.map(row=><tr key={row[0]}><td>{row[0]}</td><td>{row[1]}</td><td><span className="badge">{row[2]}</span></td><td>{row[3]}</td></tr>)}</tbody></table></section>
-    <div className="panel-grid"><section className="panel"><h3>Publication Governance</h3><p className="subtle">AI may discover, compare and draft regulatory interpretations. Production rules require technical/legal maker-checker review before publication. Every rule stores source reference, effective date, pack version and supersession relationships.</p></section><section className="panel"><h3>Disposition Model</h3><p className="subtle"><b>Green:</b> deterministic and directly testable.<br/><br/><b>Amber:</b> professional interpretation required.<br/><br/><b>Red:</b> authority/specialist clearance or unresolved statutory condition.</p></section></div>
-  </>;
+export const dynamic="force-dynamic";
+type ProjectRow={id:string;code:string;name:string;typology:string;stage:string;criticality:string;status:string};
+const emptyState:RegulaState={applicability:[],latest_run:null,latest_findings:[]};
+export default async function RegulaPage({searchParams}:{searchParams:Promise<{project?:string}>}){
+ const {supabase}=await requireWorkspaceUser();const {data:projectData,error:projectError}=await supabase.rpc("list_accessible_projects");if(projectError)throw new Error(projectError.message);const projects=(projectData||[]) as ProjectRow[];const params=await searchParams;const project=projects.find(p=>p.id===params.project)||projects[0];let state=emptyState;if(project){const {data,error}=await supabase.rpc("list_project_regula_state",{target_project_id:project.id});if(error)throw new Error(error.message);state=(data||emptyState) as RegulaState;}
+ return <>
+  <div className="topbar"><div><div className="demo">REGULA™ / Jurisdiction Engine</div><h1>Regulatory Intelligence</h1><div className="subtle">Effective-date applicability, professional confirmation, deterministic Green rules and evidence-bound findings.</div></div></div>
+  <section className="panel"><h3>Project</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{projects.map(p=><Link key={p.id} href={`/app/regula?project=${p.id}`} className={project?.id===p.id?"btn":"btn ghost"} style={{padding:"8px 11px"}}>{p.code} · {p.name}</Link>)}</div>{projects.length===0&&<div className="note">No accessible project exists yet.</div>}</section>
+  {project&&<div style={{marginTop:18}}><RegulaRuntimeClient projectId={project.id} state={state}/></div>}
+  <div className="panel-grid"><section className="panel"><h3>Rule Publication Governance</h3><p className="subtle">AI may discover or compare regulatory source material, but it cannot publish a production rule. Published packs retain source references, effective dates and supersession lineage and require the configured technical/legal governance process.</p></section><section className="panel"><h3>Production Boundary</h3><p className="subtle">REGULA reports what the evidence supports. It does not replace statutory authority approvals, architect/engineer responsibility or jurisdiction-specific legal interpretation.</p></section></div>
+ </>;
 }
