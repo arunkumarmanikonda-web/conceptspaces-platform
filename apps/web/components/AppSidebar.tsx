@@ -8,6 +8,7 @@ const items=[
   ["Projects","/app/projects"],
   ["Site Truth","/app/site-truth"],
   ["Design Intelligence","/app/design"],
+  ["Engineering","/app/engineering"],
   ["Architecture","/app/architecture"],
   ["Interiors","/app/interiors"],
   ["Structure","/app/structure"],
