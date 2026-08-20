@@ -1,20 +1,16 @@
-const providers = [
-  ["DNS / Domain", "GoDaddy", "Not configured", "Domain, DNS and verification records"],
-  ["Transactional Email", "Resend", "Not configured", "Client, project, approval and finance email"],
-  ["Payments", "Razorpay", "Registration pending", "Invoices, payment links and reconciliation webhooks"],
-  ["WhatsApp", "AiSensy", "Not configured", "Template-based client and project communication"],
-  ["SMS", "Fast2SMS", "Not configured", "OTP and transactional SMS"],
-  ["AI Orchestration", "Provider registry", "Not configured", "Reasoning, vision, speech, embeddings, rendering and document models"]
-];
+import Link from "next/link";
+import { requireWorkspaceUser } from "@/lib/auth";
+import ProviderRegistryClient,{type OrgRow,type ProviderRow} from "@/components/ProviderRegistryClient";
 
-export default function IntegrationsPage(){
+export const dynamic="force-dynamic";
+
+export default async function IntegrationsPage({searchParams}:{searchParams:Promise<{org?:string}>}){
+  const {supabase}=await requireWorkspaceUser();const {data:orgData,error:orgError}=await supabase.rpc("list_user_organisations");if(orgError)throw new Error(orgError.message);const orgs=(orgData||[]) as OrgRow[];const params=await searchParams;const organisation=orgs.find(o=>o.id===params.org)||orgs[0];let rows:ProviderRow[]=[];
+  if(organisation){const {data,error}=await supabase.rpc("list_provider_instances",{target_organisation_id:organisation.id});if(error)throw new Error(error.message);rows=(data||[]) as ProviderRow[];}
   return <>
-    <div className="topbar"><div><div className="demo">Super Admin / Integrations</div><h1>Provider Registry</h1><div className="subtle">Credentials remain server-side. The UI stores masked references, never raw secrets.</div></div><button className="btn">Add Provider</button></div>
-    <div className="panel"><h3>Core Integrations</h3><table className="table"><thead><tr><th>Capability</th><th>Provider</th><th>State</th><th>Purpose</th></tr></thead><tbody>{providers.map(([capability,provider,state,purpose])=><tr key={capability}><td>{capability}</td><td>{provider}</td><td><span className="badge">{state}</span></td><td>{purpose}</td></tr>)}</tbody></table></div>
-    <div className="grid-3" style={{marginTop:18}}>
-      <div className="card"><div className="eyebrow">Secrets</div><h3>Vault-backed credentials</h3><p>Admin records contain secret references only. Production credentials belong in the deployment secret store and may never be returned to the browser.</p></div>
-      <div className="card"><div className="eyebrow">Webhooks</div><h3>Signed + idempotent</h3><p>Inbound events are verified against provider signatures, persisted before processing, deduplicated by provider event ID and fully audited.</p></div>
-      <div className="card"><div className="eyebrow">Environment</div><h3>Sandbox before production</h3><p>Providers supporting sandbox/test credentials must clear health checks and test transactions before production activation.</p></div>
-    </div>
+    <div className="topbar"><div><div className="demo">Super Admin / Integrations</div><h1>Provider Registry</h1><div className="subtle">Vault-backed provider credentials, signed webhooks, idempotent dispatch and observable health.</div></div></div>
+    <section className="panel"><h3>Organisation</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{orgs.map(o=><Link key={o.id} href={`/app/admin/integrations?org=${o.id}`} className={organisation?.id===o.id?"btn":"btn ghost"} style={{padding:"8px 11px"}}>{o.name} · {o.role_code}</Link>)}</div>{orgs.length===0&&<div className="note">No active organisation membership is available.</div>}</section>
+    {organisation&&<div style={{marginTop:18}}><ProviderRegistryClient organisation={organisation} rows={rows}/></div>}
+    <div className="grid-3" style={{marginTop:18}}><div className="card"><div className="eyebrow">Vault</div><h3>Secrets never round-trip</h3><p>Credential values are encrypted in Supabase Vault and cannot be read back by the Admin UI.</p></div><div className="card"><div className="eyebrow">Delivery</div><h3>Provider workers</h3><p>Resend, AiSensy and Fast2SMS dispatch through governed Edge Functions with retry and health state.</p></div><div className="card"><div className="eyebrow">Payments</div><h3>Razorpay capture authority</h3><p>Only a signature-verified captured webhook can advance an invoice into part-paid or paid state.</p></div></div>
   </>;
 }
