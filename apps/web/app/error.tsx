@@ -1,0 +1,5 @@
+"use client";
+
+export default function GlobalError({error,reset}:{error:Error & {digest?:string};reset:()=>void}){
+  return <html><body><main style={{minHeight:'100vh',display:'grid',placeItems:'center',background:'#F6F7F8',fontFamily:'Inter,Arial,sans-serif',color:'#0F1D33'}}><section style={{maxWidth:640,padding:40,background:'#fff',border:'1px solid #E1E4E8'}}><div style={{fontSize:11,letterSpacing:'.18em',color:'#3D6DF0'}}>CONCEPT SPACES / CONTROLLED FAILURE</div><h1 style={{fontWeight:450}}>This workspace could not complete the request.</h1><p style={{color:'#65707B',lineHeight:1.7}}>No project state has been silently changed. You may retry the request. If the failure persists, the correlation/error context can be inspected through platform operations.</p><button onClick={reset} style={{padding:'12px 18px',background:'#0F1D33',color:'#fff',border:0,cursor:'pointer'}}>Retry</button>{error.digest?<p style={{fontSize:11,color:'#7B8792'}}>Reference: {error.digest}</p>:null}</section></main></body></html>;
+}
