@@ -1,0 +1,31 @@
+export type RegulaFact={record_key:string;value:unknown;unit?:string|null;status:string;confidence:string;source_reference?:string|null};
+export type RegulaRule={rule_id:string;rule_code:string;subject:string;disposition:'green'|'amber'|'red';requires_professional_interpretation:boolean;source_reference:string;metadata?:Record<string,unknown>};
+export type RegulaInput={project:Record<string,unknown>;as_of:string;facts:RegulaFact[];rules:RegulaRule[]};
+export type RegulaFinding={rule_id:string;status:'pass'|'fail'|'not_verified'|'requires_interpretation';observed_value:unknown;required_value:unknown;evidence_refs:string[];explanation:string};
+const ENGINE='conceptspaces-regula-deterministic';const VERSION='1.0.0';
+const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v);
+function path(value:unknown,dotted:string){let x=value;for(const part of dotted.split('.').filter(Boolean)){if(!x||typeof x!=='object'||Array.isArray(x))return undefined;x=(x as Record<string,unknown>)[part];}return x;}
+function num(value:unknown){if(finite(value))return value;if(typeof value==='string'&&value.trim()!==''&&Number.isFinite(Number(value)))return Number(value);return undefined;}
+function convert(value:number,from?:string|null,to?:string|null){const f=(from||'').toLowerCase(),t=(to||'').toLowerCase();if(!f||!t||f===t)return value;const length:Record<string,number>={m:1,metre:1,meter:1,mm:.001,cm:.01,ft:.3048,feet:.3048};const area:Record<string,number>={sqm:1,'m2':1,'m²':1,sqft:.09290304,'ft2':.09290304,'ft²':.09290304};if(length[f]&&length[t])return value*length[f]/length[t];if(area[f]&&area[t])return value*area[f]/area[t];return NaN;}
+function evaluator(rule:RegulaRule){const raw=rule.metadata?.evaluator;return raw&&typeof raw==='object'&&!Array.isArray(raw)?raw as Record<string,unknown>:null;}
+export function evaluateRegula(input:RegulaInput){
+ const facts=new Map<string,RegulaFact>();for(const f of input.facts||[]){if(!facts.has(f.record_key))facts.set(f.record_key,f);}
+ const findings:RegulaFinding[]=[];
+ for(const rule of input.rules||[]){
+  if(rule.disposition==='red'){findings.push({rule_id:rule.rule_id,status:'not_verified',observed_value:null,required_value:null,evidence_refs:[rule.source_reference],explanation:'Red rule requires authority or specialist evidence. Automated evaluation is prohibited.'});continue;}
+  if(rule.disposition==='amber'||rule.requires_professional_interpretation){findings.push({rule_id:rule.rule_id,status:'requires_interpretation',observed_value:null,required_value:null,evidence_refs:[rule.source_reference],explanation:'Professional interpretation is required. REGULA does not convert an Amber rule into an automated pass.'});continue;}
+  const e=evaluator(rule);if(!e){findings.push({rule_id:rule.rule_id,status:'not_verified',observed_value:null,required_value:null,evidence_refs:[rule.source_reference],explanation:'No published deterministic evaluator is attached to this Green rule.'});continue;}
+  const factKey=String(e.fact_key||'');const fact=facts.get(factKey);if(!fact){findings.push({rule_id:rule.rule_id,status:'not_verified',observed_value:null,required_value:e.expected??null,evidence_refs:[rule.source_reference],explanation:`Required Project Truth fact ${factKey||'(missing key)'} is not available.`});continue;}
+  if(fact.status!=='verified'){findings.push({rule_id:rule.rule_id,status:'not_verified',observed_value:fact.value,required_value:e.expected??null,evidence_refs:[rule.source_reference,...(fact.source_reference?[fact.source_reference]:[])],explanation:`Project Truth fact ${factKey} is ${fact.status}; deterministic compliance requires verified input.`});continue;}
+  const rawObserved=path(fact.value,String(e.value_path||'value'))??fact.value;const op=String(e.operator||'');let pass:boolean|undefined;let observed:unknown=rawObserved;let required:unknown=e.expected??null;
+  if(op==='required')pass=rawObserved!==null&&rawObserved!==undefined&&rawObserved!=='';
+  else if(op==='eq')pass=String(rawObserved)===String(e.expected);
+  else if(op==='in'&&Array.isArray(e.expected))pass=e.expected.map(String).includes(String(rawObserved));
+  else if(['lte','gte','lt','gt'].includes(op)){const n=num(rawObserved),expected=num(e.expected);if(n!==undefined&&expected!==undefined){const converted=convert(n,fact.unit,String(e.unit||fact.unit||''));if(Number.isFinite(converted)){observed=converted;required={value:expected,unit:e.unit||fact.unit||null};pass=op==='lte'?converted<=expected:op==='gte'?converted>=expected:op==='lt'?converted<expected:converted>expected;}}}
+  else if(op==='between'&&Array.isArray(e.expected)&&e.expected.length===2){const n=num(rawObserved),lo=num(e.expected[0]),hi=num(e.expected[1]);if(n!==undefined&&lo!==undefined&&hi!==undefined){const converted=convert(n,fact.unit,String(e.unit||fact.unit||''));if(Number.isFinite(converted)){observed=converted;required={min:lo,max:hi,unit:e.unit||fact.unit||null};pass=converted>=lo&&converted<=hi;}}}
+  if(pass===undefined){findings.push({rule_id:rule.rule_id,status:'not_verified',observed_value:observed,required_value:required,evidence_refs:[rule.source_reference,...(fact.source_reference?[fact.source_reference]:[])],explanation:`Deterministic evaluator ${op||'(missing)'} could not safely evaluate the supplied value.`});continue;}
+  findings.push({rule_id:rule.rule_id,status:pass?'pass':'fail',observed_value:observed,required_value:required,evidence_refs:[rule.source_reference,...(fact.source_reference?[fact.source_reference]:[])],explanation:pass?'Deterministic rule satisfied against verified Project Truth.':'Deterministic rule failed against verified Project Truth.'});
+ }
+ return {engine:ENGINE,engine_version:VERSION,findings,summary:{rules_evaluated:findings.length,pass:findings.filter(f=>f.status==='pass').length,fail:findings.filter(f=>f.status==='fail').length,requires_interpretation:findings.filter(f=>f.status==='requires_interpretation').length,not_verified:findings.filter(f=>f.status==='not_verified').length}};
+}
+export function canonicalRegulaInput(input:RegulaInput){return JSON.stringify({project:input.project,as_of:input.as_of,facts:[...(input.facts||[])].sort((a,b)=>a.record_key.localeCompare(b.record_key)),rules:[...(input.rules||[])].sort((a,b)=>a.rule_code.localeCompare(b.rule_code))});}
