@@ -1,0 +1,1 @@
+.brand-lockup{display:flex;align-items:center;min-width:220px}.brand-image{display:block;width:235px;height:auto;max-width:100%}.brand-lockup-light .brand-image{filter:brightness(0) invert(1);opacity:.96}.sidebar .brand-image{width:205px}.nav .brand-image{width:245px}@media(max-width:640px){.brand-image{width:190px}.nav .brand-image{width:205px}}
