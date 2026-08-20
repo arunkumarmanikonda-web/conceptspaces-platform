@@ -1,0 +1,19 @@
+{
+  "name": "conceptspaces-platform",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @conceptspaces/web",
+    "build": "npm run build -w @conceptspaces/web",
+    "lint": "npm run lint -w @conceptspaces/web",
+    "typecheck": "npm run typecheck -w @conceptspaces/web",
+    "test": "npm run test -ws --if-present"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
