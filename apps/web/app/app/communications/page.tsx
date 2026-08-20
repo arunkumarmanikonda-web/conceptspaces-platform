@@ -1,15 +1,18 @@
-const queue=[
-  ["EMAIL","Proposal PR-2026-002","Resend","Queued"],
-  ["WHATSAPP","Approval reminder: façade option","AiSensy","Awaiting template"],
-  ["SMS","Invoice CS/26-27/001 due reminder","Fast2SMS","Scheduled"],
-  ["IN-APP","Drawing release ready for review","Internal","Queued"]
-];
+import Link from "next/link";
+import { requireWorkspaceUser } from "@/lib/auth";
+import TransactionalMessagingClient,{type MessageRow,type ProjectChoice} from "@/components/TransactionalMessagingClient";
 
-export default function CommunicationsPage(){
+export const dynamic="force-dynamic";
+type Org={id:string;name:string;role_code:string};
+
+export default async function CommunicationsPage({searchParams}:{searchParams:Promise<{org?:string}>}){
+  const {supabase}=await requireWorkspaceUser();const {data:orgData,error:orgError}=await supabase.rpc("list_user_organisations");if(orgError)throw new Error(orgError.message);const orgs=(orgData||[]) as Org[];const params=await searchParams;const org=orgs.find(o=>o.id===params.org)||orgs[0];let projects:ProjectChoice[]=[];let messages:MessageRow[]=[];
+  if(org){const [{data:projectData,error:projectError},{data:messageData,error:messageError}]=await Promise.all([supabase.rpc("list_accessible_projects_for_org",{target_organisation_id:org.id}),supabase.rpc("list_provider_messages",{target_organisation_id:org.id,target_limit:100})]);if(projectError)throw new Error(projectError.message);if(messageError)throw new Error(messageError.message);projects=(projectData||[]) as ProjectChoice[];messages=(messageData||[]) as MessageRow[];}
+  const queued=messages.filter(m=>m.status==="queued"||m.status==="processing").length;const sent=messages.filter(m=>["accepted","sent","delivered"].includes(m.status)).length;const failed=messages.filter(m=>m.status==="failed").length;
   return <>
-    <div className="topbar"><div><div className="demo">Illustrative Environment</div><h1>Communications</h1><div className="subtle">Consent-aware transactional email, WhatsApp, SMS and in-app delivery</div></div><button className="btn">New Message</button></div>
-    <div className="kpis">{[["Queued","12"],["Sent Today","38"],["Failed","00"],["WhatsApp Templates","07"],["Provider Health","4 / 4"]].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value">{v}</div><div className="subtle">Illustrative</div></div>)}</div>
-    <section className="panel" style={{marginTop:16}}><h3>Delivery Queue</h3><table className="table"><thead><tr><th>Channel</th><th>Intent</th><th>Provider</th><th>Status</th></tr></thead><tbody>{queue.map(row=><tr key={row[1]}><td>{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td><span className="badge">{row[3]}</span></td></tr>)}</tbody></table></section>
-    <div className="panel-grid"><section className="panel"><h3>Channel Governance</h3><p className="subtle">Transactional communications are separated from marketing communications. Consent basis is stored per intent. WhatsApp messages requiring approved templates cannot bypass template status. SMS and email retries use bounded backoff and idempotency keys.</p></section><section className="panel"><h3>Fallback Logic</h3><p className="subtle">Email: Resend<br/>WhatsApp: AiSensy<br/>SMS: Fast2SMS<br/>Payments: Razorpay when activated<br/>DNS: GoDaddy when connected</p></section></div>
+    <div className="topbar"><div><div className="demo">Live Communications Runtime</div><h1>Communications</h1><div className="subtle">Transactional email, WhatsApp and SMS with encrypted provider credentials, idempotent dispatch and delivery evidence.</div></div></div>
+    <section className="panel"><h3>Organisation</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{orgs.map(o=><Link key={o.id} href={`/app/communications?org=${o.id}`} className={org?.id===o.id?"btn":"btn ghost"} style={{padding:"8px 11px"}}>{o.name}</Link>)}</div></section>
+    <div className="kpis" style={{marginTop:16}}>{[["Queued",String(queued)],["Sent / Accepted",String(sent)],["Failed",String(failed)],["Projects",String(projects.length)],["Messages",String(messages.length)]].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value">{v}</div><div className="subtle">Live database</div></div>)}</div>
+    {org?<div style={{marginTop:18}}><TransactionalMessagingClient organisationId={org.id} projects={projects} messages={messages}/></div>:<div className="note" style={{marginTop:18}}>No active organisation membership is available.</div>}
   </>;
 }
