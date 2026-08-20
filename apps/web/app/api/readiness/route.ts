@@ -5,7 +5,11 @@ export async function GET(){
   return Response.json({
     service:"conceptspaces-web",
     ready:true,
-    database:{configured:env.supabaseConfigured,requiredForStaticPreview:false},
+    database:{
+      configured:env.supabaseConfigured,
+      source:env.supabaseConfigSource,
+      requiredForStaticPreview:false
+    },
     providers:{
       email:env.resendConfigured,
       payments:env.razorpayConfigured,
