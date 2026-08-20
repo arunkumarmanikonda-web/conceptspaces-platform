@@ -15,14 +15,20 @@ export type ReportPayload={
   snapshot_hashes:Record<string,string>;
 };
 
-const brand={midnight:"0F1D33",signal:"3D6DF0",carbon:"202428",stone:"A7ACB3",white:"F6F7F8"};
+const brand={midnight:"0F1D33",signal:"3D6DF0",carbon:"202428",stone:"A7ACB3"};
+const EMU=914400;
 const title=(payload:ReportPayload)=>`${payload.project.code} · ${payload.project.name}`;
 const text=(v:unknown)=>v===null||v===undefined?"":typeof v==="string"?v:JSON.stringify(v);
 const clip=(v:unknown,n=120)=>{const s=text(v);return s.length>n?`${s.slice(0,n-1)}…`:s;};
 const xml=(v:unknown)=>text(v).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&apos;"}[m]||m));
-const zipXml=(files:Record<string,string>)=>Buffer.from(zipSync(Object.fromEntries(Object.entries(files).map(([name,value])=>[name,strToU8(value)])),{level:6}));
 
-function rows(payload:ReportPayload){
+function zipXml(files:Record<string,string>){
+  const encoded:Record<string,Uint8Array>={};
+  for(const [name,value] of Object.entries(files))encoded[name]=strToU8(value);
+  return Buffer.from(zipSync(encoded,{level:6}));
+}
+
+function rows(payload:ReportPayload):string[][]{
   return [
     ["Project",payload.project.name],["Project Code",payload.project.code],["Typology",payload.project.typology||""],["Stage",payload.project.stage||""],["Criticality",payload.project.criticality||""],["Status",payload.project.status||""],
     ["Project Truth Records",String(payload.project_truth.length)],["Requirements",String(payload.requirements.length)],["Regulatory Findings",String(payload.regulatory_findings.length)],["CDE Documents",String(payload.cde.documents?.length||0)],["CDE Models",String(payload.cde.models?.length||0)]
@@ -30,12 +36,13 @@ function rows(payload:ReportPayload){
 }
 
 export async function generatePdf(payload:ReportPayload){
-  const pdf=await PDFDocument.create();const font=await pdf.embedFont(StandardFonts.Helvetica);const bold=await pdf.embedFont(StandardFonts.HelveticaBold);
+  const pdf=await PDFDocument.create();
+  const font=await pdf.embedFont(StandardFonts.Helvetica);const bold=await pdf.embedFont(StandardFonts.HelveticaBold);
   let page=pdf.addPage([595.28,841.89]);let y=790;
   const add=(value:string,size=10,isBold=false)=>{if(y<55){page=pdf.addPage([595.28,841.89]);y=790;}page.drawText(value.replace(/[^\x20-\x7E]/g," ").slice(0,105),{x:48,y,size,font:isBold?bold:font,color:rgb(0.06,0.11,0.2)});y-=size+8;};
   page.drawRectangle({x:0,y:812,width:595.28,height:30,color:rgb(0.06,0.11,0.2)});page.drawText("CONCEPT SPACES",{x:48,y:822,size:10,font:bold,color:rgb(1,1,1)});
   add("INTELLIGENCE, GIVEN FORM.",8);add(title(payload),22,true);add(`${payload.report_type.replaceAll("_"," ").toUpperCase()} · Snapshot ${new Date(payload.as_of).toISOString()}`,9);
-  y-=8;for(const [k,v] of rows(payload)){add(`${k}: ${v}`,10,k==="Project");}
+  y-=8;for(const [k,v] of rows(payload))add(`${k}: ${v}`,10,k==="Project");
   y-=8;add("PROJECT TRUTH",13,true);for(const r of payload.project_truth.slice(0,80))add(`${clip(r.record_key,32)} · ${clip(r.value,64)} · ${clip(r.status,16)} · confidence ${clip(r.confidence,8)}`,8);
   y-=8;add("REQUIREMENTS",13,true);for(const r of payload.requirements.slice(0,80))add(`${clip(r.code,18)} · ${clip(r.statement,80)} · ${clip(r.status,14)}`,8);
   y-=8;add("REGULATORY FINDINGS",13,true);for(const r of payload.regulatory_findings.slice(0,80))add(`${clip(r.disposition,12)} · ${clip(r.status,14)} · ${clip(r.explanation,78)}`,8);
@@ -44,7 +51,7 @@ export async function generatePdf(payload:ReportPayload){
 }
 
 export async function generateDocx(payload:ReportPayload){
-  const summaryRows=rows(payload).map(([k,v])=>new TableRow({children:[new TableCell({children:[new Paragraph({children:[new TextRun({text:k,bold:true})]})]}),new TableCell({children:[new Paragraph(String(v))]})]}));
+  const summaryRows=rows(payload).map(([k,v])=>new TableRow({children:[new TableCell({children:[new Paragraph({children:[new TextRun({text:k,bold:true})]})]}),new TableCell({children:[new Paragraph(v)]})]}));
   const children=[
     new Paragraph({text:"CONCEPT SPACES",heading:HeadingLevel.TITLE}),new Paragraph("INTELLIGENCE, GIVEN FORM."),new Paragraph({text:title(payload),heading:HeadingLevel.HEADING_1}),new Paragraph(`${payload.report_type.replaceAll("_"," ").toUpperCase()} · ${new Date(payload.as_of).toISOString()}`),new Table({rows:summaryRows}),
     new Paragraph({text:"Project Truth",heading:HeadingLevel.HEADING_1}),...payload.project_truth.slice(0,100).map(r=>new Paragraph(`${clip(r.record_key,40)} | ${clip(r.value,110)} | ${clip(r.status,20)} | confidence ${clip(r.confidence,10)}`)),
@@ -62,12 +69,11 @@ function worksheet(data:unknown[][]){
 }
 
 export async function generateXlsx(payload:ReportPayload){
-  const sheets:[string,unknown[][]][]=[
-    ["Summary",[["CONCEPT SPACES","INTELLIGENCE, GIVEN FORM."],["Snapshot",payload.as_of],...rows(payload)]],
-    ["Project Truth",[["Key","Kind","Value","Unit","Source","Confidence","Status","Criticality"],...payload.project_truth.map(r=>[r.record_key,r.kind,text(r.value),r.unit,r.source_reference,r.confidence,r.status,r.criticality])],
-    ["Requirements",[["Code","Statement","Category","Status","Criticality","Acceptance Criteria"],...payload.requirements.map(r=>[r.code,r.statement,r.category,r.status,r.criticality,text(r.acceptance_criteria)])],
-    ["REGULA",[["Disposition","Status","Observed","Required","Explanation","Checked At"],...payload.regulatory_findings.map(r=>[r.disposition,r.status,text(r.observed_value),text(r.required_value),r.explanation,r.checked_at])]
-  ];
+  const sheets:Array<[string,unknown[][]]>=[];
+  sheets.push(["Summary",[["CONCEPT SPACES","INTELLIGENCE, GIVEN FORM."],["Snapshot",payload.as_of],...rows(payload)]]);
+  sheets.push(["Project Truth",[["Key","Kind","Value","Unit","Source","Confidence","Status","Criticality"],...payload.project_truth.map(r=>[r.record_key,r.kind,text(r.value),r.unit,r.source_reference,r.confidence,r.status,r.criticality])]]);
+  sheets.push(["Requirements",[["Code","Statement","Category","Status","Criticality","Acceptance Criteria"],...payload.requirements.map(r=>[r.code,r.statement,r.category,r.status,r.criticality,text(r.acceptance_criteria)])]]);
+  sheets.push(["REGULA",[["Disposition","Status","Observed","Required","Explanation","Checked At"],...payload.regulatory_findings.map(r=>[r.disposition,r.status,text(r.observed_value),text(r.required_value),r.explanation,r.checked_at])]]);
   const overrides=sheets.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("");
   const workbookSheets=sheets.map(([name],i)=>`<sheet name="${xml(name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join("");
   const workbookRels=sheets.map((_,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join("");
@@ -81,7 +87,6 @@ export async function generateXlsx(payload:ReportPayload){
   return zipXml(files);
 }
 
-const EMU=914400;
 function pptTextShape(id:number,name:string,lines:string[],x:number,y:number,w:number,h:number,size=18,color=brand.carbon,bold=false){
   const paras=lines.map(line=>`<a:p><a:r><a:rPr lang="en-US" sz="${size*100}"${bold?' b="1"':''}><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:latin typeface="Arial"/></a:rPr><a:t>${xml(line)}</a:t></a:r><a:endParaRPr lang="en-US" sz="${size*100}"/></a:p>`).join("");
   return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${xml(name)}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${Math.round(x*EMU)}" y="${Math.round(y*EMU)}"/><a:ext cx="${Math.round(w*EMU)}" cy="${Math.round(h*EMU)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr wrap="square"/><a:lstStyle/>${paras}</p:txBody></p:sp>`;
@@ -128,7 +133,7 @@ export function generateHtml(payload:ReportPayload){
 
 export function generateCsv(payload:ReportPayload){
   const q=(v:unknown)=>`"${text(v).replaceAll('"','""')}"`;
-  const lines=[["section","key","value","status","confidence"],...rows(payload).map(r=>["summary",r[0],r[1],"",""]),...payload.project_truth.map(r=>["project_truth",r.record_key,text(r.value),r.status,r.confidence]),...payload.requirements.map(r=>["requirement",r.code,r.statement,r.status,r.criticality]),...payload.regulatory_findings.map(r=>["regulatory",r.disposition,r.explanation,r.status,r.checked_by_type])];
+  const lines:unknown[][]=[["section","key","value","status","confidence"],...rows(payload).map(r=>["summary",r[0],r[1],"",""]),...payload.project_truth.map(r=>["project_truth",r.record_key,text(r.value),r.status,r.confidence]),...payload.requirements.map(r=>["requirement",r.code,r.statement,r.status,r.criticality]),...payload.regulatory_findings.map(r=>["regulatory",r.disposition,r.explanation,r.status,r.checked_by_type])];
   return lines.map(r=>r.map(q).join(",")).join("\r\n");
 }
 
