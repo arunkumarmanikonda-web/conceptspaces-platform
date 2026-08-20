@@ -8,7 +8,7 @@ Activate final package release governance as a distinct, fail-closed safety laye
 
 ### Governed release objects
 
-Migrations `0042`–`0044` activate and harden:
+Migrations `0042`–`0045` activate and harden:
 
 - package release gates with explicit criticality and required evidence policy;
 - exact-content-hash release safety cases;
@@ -16,7 +16,8 @@ Migrations `0042`–`0044` activate and harden:
 - package-level professional reviews with credential identity and exact reviewed hash;
 - gate- and case-scoped release exceptions;
 - controlled approval and issue timestamps and actors;
-- current-evidence evaluation state.
+- current-evidence evaluation state;
+- platform-bound source-capture enforcement for all passing release evidence.
 
 All browser mutation paths run through `SECURITY INVOKER` RPCs and RLS phase guards. A narrow credential-validation helper returns only whether a reviewer credential remains current and discipline-compatible; raw third-party credential records remain protected by their existing RLS boundary.
 
@@ -42,13 +43,13 @@ A changed package hash is a changed release object. Existing approvals are not t
 
 Build Pack 28 avoids copy/paste evidence claims by adding controlled capture paths:
 
-- `capture_release_truth_snapshot(...)` hashes the current non-superseded Project Truth and rejects unresolved/unverified C3/C4 truth.
+- `capture_release_truth_snapshot(...)` requires a non-empty Project Truth baseline, hashes the current non-superseded Project Truth and rejects unresolved/unverified C3/C4 truth.
 - `capture_release_coordination_check(...)` hashes the current coordination matrix and rejects open/coordinating items.
 - `capture_release_regulatory_check(...)` accepts only the latest completed clean REGULA run for the project and binds its result hash.
 - `capture_release_engineering_check(...)` accepts only a completed calculation from a currently eligible certified engine version with a current exact-output-hash professional engineering review.
 - `capture_release_client_approval(...)` binds the client approval reference to the exact package content hash.
 
-Generic release evidence cannot be marked as passing if the database cannot verify that it is current.
+Migration `0045` closes the generic-passing-evidence path: a caller cannot submit an arbitrary hash and mark Truth, coordination, regulatory, engineering or client evidence as passing. Passing evidence must originate through the matching platform source-capture context, after which the database independently re-validates its freshness.
 
 ### Professional package review
 
@@ -97,8 +98,8 @@ The previous illustrative release rows and KPI values were removed.
 
 ## Verification
 
-- Production migrations `0042`, `0043` and `0044` applied successfully.
-- Supabase security advisor returns zero findings after the Release Assurance migrations.
+- Production migrations `0042`, `0043`, `0044` and `0045` applied successfully.
+- Supabase security advisor returns zero findings after the Release Assurance migrations and source-capture hardening.
 - Pack-28 RLS policies use transaction-local phase guards without adding new RLS init-plan warnings.
 - Pack-28 foreign-key paths have covering indexes; new indexes show only expected unused-index notices while release tables remain empty.
 - Vercel preview and GitHub CI must pass on the complete feature head before merge to `main`.
