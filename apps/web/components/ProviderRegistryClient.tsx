@@ -1,0 +1,35 @@
+"use client";
+
+import { useMemo,useState,useTransition } from "react";
+import { useRouter } from "next/navigation";
+
+export type ProviderRow={provider_key:string;display_name:string;category:string;supports_sandbox:boolean;webhook_capable:boolean;environment:string;status:string;enabled:boolean;config:Record<string,unknown>;configured_secret_fields:string[];verified_at?:string|null;last_health_check_at?:string|null;last_health_status?:string|null};
+export type OrgRow={id:string;name:string;role_code:string};
+
+type Definition={label:string;purpose:string;secretFields:Array<[string,string]>;configFields:Array<[string,string,string?]>};
+const definitions:Record<string,Definition>={
+  resend:{label:"Resend",purpose:"Transactional email, delivery events and client/project notifications",secretFields:[["api_key","API Key"],["webhook_secret","Webhook Signing Secret"]],configFields:[["from_email","Verified From Address","Concept Spaces <projects@example.com>"],["reply_to","Reply-To Address","projects@example.com"]]},
+  razorpay:{label:"Razorpay",purpose:"Invoice payment orders, captured-payment webhooks and reconciliation",secretFields:[["key_id","Key ID"],["key_secret","Key Secret"],["webhook_secret","Webhook Secret"]],configFields:[]},
+  aisensy:{label:"AiSensy",purpose:"Approved-template WhatsApp transactional communication",secretFields:[["api_key","API Key"]],configFields:[["default_campaign","Default API Campaign","Project Update"]]},
+  fast2sms:{label:"Fast2SMS",purpose:"DLT-compliant transactional SMS and OTP messaging",secretFields:[["api_key","API Key"]],configFields:[["route","Route","dlt"],["sender_id","DLT Sender ID","CSPACE"],["message_id","Default DLT Message ID",""],["template_id","DLT Template ID",""],["entity_id","DLT Entity ID",""]]},
+  godaddy:{label:"GoDaddy",purpose:"Production DNS and verification-record automation",secretFields:[["api_key","API Key"],["api_secret","API Secret"]],configFields:[["domain","Managed Domain","conceptspaces.live"]]}
+};
+
+export default function ProviderRegistryClient({organisation,rows}:{organisation:OrgRow;rows:ProviderRow[]}){
+  const router=useRouter();const [selected,setSelected]=useState(rows[0]?.provider_key||"resend");const [environment,setEnvironment]=useState<"production"|"sandbox">("production");const [message,setMessage]=useState("");const [busy,startTransition]=useTransition();
+  const def=definitions[selected]||definitions.resend;const existing=useMemo(()=>rows.find(r=>r.provider_key===selected&&r.environment===environment),[rows,selected,environment]);
+  async function save(form:FormData){setMessage("Encrypting credentials into Supabase Vault…");const config:Record<string,string>={};for(const [key] of def.configFields){const v=String(form.get(`config_${key}`)||"").trim();if(v)config[key]=v;}const secrets:Record<string,string>={};for(const [key] of def.secretFields){const v=String(form.get(`secret_${key}`)||"").trim();if(v)secrets[key]=v;}const enabled=form.get("enabled")==="on";
+    const response=await fetch("/api/admin/providers/configure",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({organisation_id:organisation.id,provider_key:selected,environment,config,secrets,enabled})});const result=await response.json() as {error?:string;fields?:string[]};if(!response.ok){setMessage(result.error==="required_credentials_missing"?`Missing credentials: ${(result.fields||[]).join(", ")}`:result.error||"Configuration failed.");return;}setMessage("Saved. Secret values are encrypted in Vault and will not be returned to the browser.");startTransition(()=>router.refresh());}
+  return <>
+    {message&&<div className="note" style={{marginBottom:16}}><b>Provider configuration:</b> {message}{busy?" Refreshing…":""}</div>}
+    <div className="panel-grid">
+      <section className="panel"><h3>Provider Configuration</h3><div className="field-grid"><div className="field"><label>Provider</label><select value={selected} onChange={e=>setSelected(e.target.value)}>{Object.entries(definitions).map(([key,v])=><option key={key} value={key}>{v.label}</option>)}</select></div><div className="field"><label>Environment</label><select value={environment} onChange={e=>setEnvironment(e.target.value as "production"|"sandbox")}><option value="production">Production</option>{rows.find(r=>r.provider_key===selected)?.supports_sandbox!==false&&<option value="sandbox">Sandbox</option>}</select></div></div><p className="subtle">{def.purpose}</p>
+        <form action={save}>{def.configFields.length>0&&<><div className="eyebrow" style={{marginTop:16}}>Non-secret configuration</div><div className="field-grid">{def.configFields.map(([key,label,placeholder])=><div className="field" key={key}><label>{label}</label><input name={`config_${key}`} defaultValue={String(existing?.config?.[key]||"")} placeholder={placeholder}/></div>)}</div></>}
+          <div className="eyebrow" style={{marginTop:16}}>Encrypted credentials</div><div className="field-grid">{def.secretFields.map(([key,label])=><div className="field" key={key}><label>{label} {existing?.configured_secret_fields?.includes(key)&&<span className="badge">Configured</span>}</label><input type="password" autoComplete="new-password" name={`secret_${key}`} placeholder={existing?.configured_secret_fields?.includes(key)?"Leave blank to keep existing secret":"Enter secret"}/></div>)}</div>
+          <label style={{display:"flex",alignItems:"center",gap:8,marginTop:14}}><input type="checkbox" name="enabled" defaultChecked={existing?.enabled===true}/> Enabled for runtime use</label><div style={{display:"flex",gap:10,marginTop:16}}><button className="btn" type="submit">Save to Vault</button></div></form>
+      </section>
+      <section className="panel"><h3>Security Contract</h3><div className="note"><b>Write-only secrets.</b> Secret values are encrypted with Supabase Vault. This page only receives the field names that are configured, never the decrypted values.</div><p className="subtle" style={{marginTop:14}}>Outbound dispatch runs through authenticated Edge Functions. Provider workers retrieve decrypted credentials only with the Supabase service role. Browser code never receives provider secrets.</p><p className="subtle">Webhook endpoints verify provider signatures against the raw request body before any payment or delivery state is applied.</p></section>
+    </div>
+    <section className="panel" style={{marginTop:18}}><h3>Runtime State</h3><div style={{overflowX:"auto"}}><table className="table"><thead><tr><th>Provider</th><th>Environment</th><th>Status</th><th>Enabled</th><th>Secrets</th><th>Health</th></tr></thead><tbody>{rows.map((r,i)=><tr key={`${r.provider_key}-${r.environment}-${i}`}><td>{definitions[r.provider_key]?.label||r.display_name}</td><td>{r.environment}</td><td><span className="badge">{r.status}</span></td><td>{r.enabled?"Yes":"No"}</td><td>{r.configured_secret_fields.length?r.configured_secret_fields.join(", "):"None"}</td><td>{r.last_health_status||"Not checked"}</td></tr>)}</tbody></table></div></section>
+  </>;
+}
