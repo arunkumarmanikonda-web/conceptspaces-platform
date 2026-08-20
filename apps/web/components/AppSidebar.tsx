@@ -3,6 +3,7 @@ import { Brand } from "@/components/Brand";
 
 const items=[
   ["Dashboard","/app"],
+  ["Ask Your Project™","/app/ask"],
   ["CRM & Growth","/app/crm"],
   ["Projects","/app/projects"],
   ["Site Truth","/app/site-truth"],
@@ -33,6 +34,7 @@ export function AppSidebar(){
     <Link href="/app/admin/access" className="side-item">Identity & Authority</Link>
     <Link href="/app/admin/integrations" className="side-item">Integrations</Link>
     <Link href="/app/admin/tax-rules" className="side-item">Tax Rule Packs</Link>
+    <Link href="/app/admin/ai-control" className="side-item">AI Control Plane</Link>
     <a className="side-item">Settings</a>
   </aside>;
 }
