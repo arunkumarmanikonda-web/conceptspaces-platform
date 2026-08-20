@@ -5,4 +5,6 @@
 --
 -- The original monolithic migration failed PostgreSQL parsing and the enclosing
 -- transaction rolled back completely. This stub intentionally performs no DDL.
+begin;
 select 1;
+commit;
