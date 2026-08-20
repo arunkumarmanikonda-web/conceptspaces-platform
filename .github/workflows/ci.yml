@@ -19,6 +19,8 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - name: Production dependency vulnerability gate
+        run: npm audit --omit=dev --audit-level=high
       - name: Repository security and migration gates
         run: node scripts/quality-gates.mjs
       - name: TypeScript
