@@ -29,6 +29,9 @@ const items=[
   ["REGULA™","/app/regula"],
   ["Models","/app/models"],
   ["Documents","/app/documents"],
+  ["Content","/app/content"],
+  ["Reports","/app/reports"],
+  ["Presentations","/app/presentations"],
   ["Issues & RFIs","/app/issues"],
   ["Approvals","/app/approvals"],
   ["Release Assurance","/app/releases"],
@@ -53,6 +56,8 @@ export function AppSidebar(){
     <Link href="/app/admin/integrations" className="side-item">Integrations</Link>
     <Link href="/app/admin/workflows" className="side-item">Workflow Definitions</Link>
     <Link href="/app/admin/system-config" className="side-item">System Configuration</Link>
+    <Link href="/app/admin/cms" className="side-item">CMS Governance</Link>
+    <Link href="/app/admin/templates" className="side-item">Document Templates</Link>
     <Link href="/app/admin/typologies" className="side-item">Typology Packs</Link>
     <Link href="/app/admin/tax-rules" className="side-item">Tax Rule Packs</Link>
     <Link href="/app/admin/ai-control" className="side-item">AI Control Plane</Link>
