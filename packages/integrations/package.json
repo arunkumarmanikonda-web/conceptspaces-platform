@@ -4,7 +4,14 @@
   "version": "0.1.0",
   "type": "module",
   "types": "./src/index.ts",
-  "exports": {".": "./src/index.ts"},
+  "exports": {
+    ".": "./src/index.ts",
+    "./providers/godaddy": "./src/providers/godaddy.ts",
+    "./providers/resend": "./src/providers/resend.ts",
+    "./providers/razorpay": "./src/providers/razorpay.ts",
+    "./providers/fast2sms": "./src/providers/fast2sms.ts"
+  },
   "scripts": {"typecheck":"tsc -p tsconfig.json --noEmit"},
-  "devDependencies": {"typescript":"^5.8.3"}
+  "dependencies": {"svix":"^1.78.0"},
+  "devDependencies": {"@types/node":"^22.15.0","typescript":"^5.8.3"}
 }
