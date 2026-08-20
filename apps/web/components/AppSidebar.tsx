@@ -13,7 +13,10 @@ const items=[
   ["Issues & RFIs","/app/issues"],
   ["Approvals","/app/approvals"],
   ["Release Assurance","/app/releases"],
-  ["Quality","#"],
+  ["Cost & Quantity","/app/cost"],
+  ["Procurement","/app/procurement"],
+  ["Site & Delivery","/app/site"],
+  ["Digital Twin","/app/twin"],
   ["Commercial","/app/commercial"],
   ["Communications","/app/communications"],
   ["Analytics","#"]
