@@ -1,13 +1,14 @@
-export default function BranchesPage(){
-  const branches=[
-    ['main','Approved design direction','a17f…9c','Active'],
-    ['yield-study','Commercial yield alternative','4b02…f1','Active'],
-    ['low-carbon','Embodied-carbon alternative','3e91…a8','Active'],
-    ['client-option-b','Client-requested branch','88cd…42','Frozen']
-  ];
-  return <>
-    <div className="topbar"><div><div className="demo">Building Git / Branching</div><h1>Project Branches</h1><div className="subtle">Explore alternatives without corrupting the approved project state. Every object-level change has lineage, author and content hash.</div></div><button className="btn">Create Branch</button></div>
-    <div className="panel"><table><thead><tr><th>Branch</th><th>Purpose</th><th>Head</th><th>Status</th></tr></thead><tbody>{branches.map(r=><tr key={r[0]}>{r.map(c=><td key={c}>{c}</td>)}</tr>)}</tbody></table></div>
-    <div className="note" style={{marginTop:18}}><b>Merge control.</b> Branch merge is a governed project change. Conflicting requirements, rules, model objects and approved releases must be explicitly reconciled before merge.</div>
-  </>;
+import ConfigurationControlClient from "@/components/ConfigurationControlClient";
+import {emptyConfigurationWorkspace,type ConfigurationProject,type ConfigurationWorkspace} from "@/components/configuration-runtime-types";
+import {requireWorkspaceUser} from "@/lib/auth";
+
+export const dynamic="force-dynamic";
+
+export default async function BranchesPage(){
+ const {supabase}=await requireWorkspaceUser();
+ const {data:projectData,error:projectError}=await supabase.rpc("list_accessible_projects");if(projectError)throw new Error(projectError.message);
+ const projects=(projectData||[]) as ConfigurationProject[];
+ const batches=await Promise.all(projects.map(async p=>{const {data,error}=await supabase.rpc("list_project_configuration_workspace",{target_project_id:p.id});if(error)throw new Error(error.message);return (data||emptyConfigurationWorkspace) as ConfigurationWorkspace;}));
+ const state:ConfigurationWorkspace={branches:batches.flatMap(x=>x.branches||[]),commits:batches.flatMap(x=>x.commits||[]),changes:batches.flatMap(x=>x.changes||[]),impacts:batches.flatMap(x=>x.impacts||[]),approvals:batches.flatMap(x=>x.approvals||[])};
+ return <><div className="topbar"><div><div className="demo">Building Git / Governed Configuration</div><h1>Project Branches</h1><div className="subtle">Explore alternatives without corrupting approved project state. Every branch head, project change, commit and merge carries exact lineage and content-hash evidence.</div></div></div><ConfigurationControlClient projects={projects} state={state} section="branches"/></>;
 }
