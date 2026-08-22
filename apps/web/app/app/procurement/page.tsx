@@ -4,7 +4,7 @@ import {emptyProcurementWorkspace,type ProcurementWorkspaceState,type ProjectRow
 
 export const dynamic="force-dynamic";
 
-type ProcurementState=ProcurementWorkspaceState&{organisation_id?:string;invites?:unknown[]};
+type ProcurementState=ProcurementWorkspaceState&{organisation_id?:string;invites?:Array<{id:string;tender_package_id:string;vendor_id:string;created_at:string;declined_at?:string|null}>};
 export default async function ProcurementPage({searchParams}:{searchParams:Promise<{project?:string}>}){
  const {supabase}=await requireWorkspaceUser();
  const {data:projectData,error:projectError}=await supabase.rpc("list_accessible_projects");
