@@ -26,3 +26,8 @@ export type ProjectStageRow={id:string;project_id:string;stage_code:string;title
 export type ProjectStageEvent={id:string;project_stage_id:string;project_id:string;from_state?:string|null;to_state:string;reason?:string|null;evidence_refs:unknown[];actor_id?:string|null;created_at:string};
 export type ActivationState={projects:CommercialProject[];activations:ActivationRow[];stages:ProjectStageRow[];stage_events:ProjectStageEvent[];contracts:ContractRow[]};
 export const emptyActivationState:ActivationState={projects:[],activations:[],stages:[],stage_events:[],contracts:[]};
+
+export type TeamCandidate={user_id:string;email?:string|null;membership_role:string;status:string};
+export type ProjectTeamMember={id:string;project_id:string;user_id:string;role_code:string;discipline?:string|null;status:string;email?:string|null};
+export type ProjectTeamState={members:TeamCandidate[];project_members:ProjectTeamMember[]};
+export const emptyProjectTeamState:ProjectTeamState={members:[],project_members:[]};
