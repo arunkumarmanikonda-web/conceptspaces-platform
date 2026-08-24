@@ -2,6 +2,7 @@ import Link from "next/link";
 import {requireWorkspaceUser} from "@/lib/auth";
 import SiteProgrammeClient,{emptySiteProgrammeState,type SiteProgrammeState} from "@/components/SiteProgrammeClient";
 import SiteDeliveryClient,{emptySiteDeliveryState,type SiteDeliveryState} from "@/components/SiteDeliveryClient";
+import SiteOfflineQueueClient from "@/components/SiteOfflineQueueClient";
 import RealityVerificationClient from "@/components/RealityVerificationClient";
 import {emptyRealityWorkspace,type ProjectRow,type RealityWorkspaceState} from "@/components/lifecycle-runtime-types";
 
@@ -36,8 +37,9 @@ export default async function SitePage({searchParams}:{searchParams:Promise<{pro
   {project&&<>
     <SiteProgrammeClient projectId={project.id} state={programme} vendors={delivery.vendors||[]}/>
     <SiteDeliveryClient projectId={project.id} state={delivery}/>
+    <SiteOfflineQueueClient projectId={project.id} packages={delivery.offline_packages||[]}/>
     <RealityVerificationClient projectId={project.id} state={reality}/>
   </>}
-  <div className="note" style={{marginTop:16}}><b>Controlled field truth.</b> Superseded offline packages fail closed; inspections and progress require evidence; failed inspections create NCRs; RFIs/submittals retain exact source revision provenance; and reality comparisons are bound to approved model checksums.</div>
+  <div className="note" style={{marginTop:16}}><b>Controlled field truth.</b> Device-local records can be captured without network and survive refresh; reconnect sync revalidates the frozen controlled-information hash. Superseded offline packages fail closed; inspections and progress require evidence; failed inspections create NCRs; RFIs/submittals retain exact source revision provenance; and reality comparisons are bound to approved model checksums.</div>
  </>;
 }
