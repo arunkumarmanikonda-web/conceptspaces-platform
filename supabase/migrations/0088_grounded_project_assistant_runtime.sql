@@ -55,6 +55,38 @@ create policy project_messages_governed_flag on engagement.project_messages for 
 using (role='assistant' and current_setting('conceptspaces.ask_phase',true)='flag' and exists(select 1 from engagement.project_conversations c where c.id=conversation_id and c.created_by=auth.uid()))
 with check (role='assistant' and flagged_by=auth.uid() and flagged_at is not null);
 
+create or replace function engagement.guard_project_message_update()
+returns trigger
+language plpgsql
+security definer
+set search_path='engagement','pg_temp'
+as $$
+begin
+  if current_setting('conceptspaces.ask_phase',true)<>'flag' then
+    raise exception 'PROJECT_MESSAGE_IMMUTABLE';
+  end if;
+  if old.role<>'assistant'
+     or new.id is distinct from old.id
+     or new.conversation_id is distinct from old.conversation_id
+     or new.project_id is distinct from old.project_id
+     or new.role is distinct from old.role
+     or new.content is distinct from old.content
+     or new.citations is distinct from old.citations
+     or new.confidence is distinct from old.confidence
+     or new.response_status is distinct from old.response_status
+     or new.created_by is distinct from old.created_by
+     or new.created_at is distinct from old.created_at then
+    raise exception 'PROJECT_MESSAGE_CONTENT_IMMUTABLE';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function engagement.guard_project_message_update() from public,anon,authenticated;
+
+drop trigger if exists trg_guard_project_message_update on engagement.project_messages;
+create trigger trg_guard_project_message_update before update on engagement.project_messages
+for each row execute function engagement.guard_project_message_update();
+
 create or replace function engagement.authorized_project_organisation_id(target_project_id uuid)
 returns uuid
 language plpgsql
@@ -64,7 +96,9 @@ set search_path='engagement','project','auth','pg_temp'
 as $$
 declare org_id uuid;
 begin
-  if auth.uid() is null or not (project.can_access_project(target_project_id) or engagement.client_can_access_project(target_project_id)) then raise exception 'PROJECT_ASSISTANT_PERMISSION_DENIED'; end if;
+  if auth.uid() is null or not (project.can_access_project(target_project_id) or engagement.client_can_access_project(target_project_id)) then
+    raise exception 'PROJECT_ASSISTANT_PERMISSION_DENIED';
+  end if;
   select organisation_id into org_id from project.projects where id=target_project_id;
   return org_id;
 end;
@@ -72,15 +106,36 @@ $$;
 revoke all on function engagement.authorized_project_organisation_id(uuid) from public,anon;
 grant execute on function engagement.authorized_project_organisation_id(uuid) to authenticated;
 
-create or replace function engagement.build_project_evidence_pack(target_project_id uuid,target_question text,target_client_mode boolean,target_allow_documents boolean,target_allow_commercial boolean)
+create or replace function engagement.build_project_evidence_pack(target_project_id uuid,target_question text)
 returns jsonb
 language plpgsql
 stable
 security definer
 set search_path='project','coordination','cde','governance','operations','integration','engineering','public','engagement','auth','pg_temp'
 as $$
-declare q text:=lower(coalesce(target_question,'')); evidence jsonb:='[]'::jsonb;
+declare
+  q text:=lower(coalesce(target_question,''));
+  evidence jsonb:='[]'::jsonb;
+  internal_mode boolean:=false;
+  client_mode boolean:=false;
+  access_row engagement.client_portal_access%rowtype;
+  allow_documents boolean:=true;
+  allow_commercial boolean:=true;
 begin
+  if auth.uid() is null then raise exception 'authentication_required'; end if;
+  internal_mode:=project.can_access_project(target_project_id);
+  client_mode:=not internal_mode;
+  if client_mode then
+    select * into access_row from engagement.client_portal_access
+    where project_id=target_project_id and user_id=auth.uid() and status='active'
+    order by activated_at desc limit 1;
+    if not found or not coalesce((access_row.permissions->>'ask_project')::boolean,false) then
+      raise exception 'CLIENT_PERMISSION_DENIED';
+    end if;
+    allow_documents:=coalesce((access_row.permissions->>'view_documents')::boolean,false);
+    allow_commercial:=coalesce((access_row.permissions->>'view_commercial')::boolean,false);
+  end if;
+
   evidence:=evidence||coalesce((select jsonb_agg(x) from (
     select jsonb_build_object('domain','project','resource_type','project','resource_id',p.id,'label',p.code::text||' · '||p.name,'status',p.status,'confidence','B','summary','Current stage: '||p.stage||'; typology: '||p.typology) x
     from project.projects p where p.id=target_project_id
@@ -96,20 +151,23 @@ begin
   if q ~ '(approval|decision|pending|block|blocking|next)' or q !~ '(document|drawing|invoice|payment|contract|change|changed|release|model|architecture|structure)' then
     evidence:=evidence||coalesce((select jsonb_agg(x) from (
       select jsonb_build_object('domain','approval','resource_type',a.resource_type,'resource_id',a.resource_id,'label','Approval '||a.id::text,'status',a.decision,'confidence','A','hash',a.requested_resource_hash,'summary','Criticality '||a.criticality||'; required role '||coalesce(a.role_required,'unspecified')||'; requested '||a.requested_at::text) x
-      from coordination.approval_requests a where a.project_id=target_project_id and a.decision='pending' and (not target_client_mode or a.requested_from=auth.uid() or coalesce(a.role_required,'') like 'client%') order by a.requested_at desc limit 10
+      from coordination.approval_requests a
+      where a.project_id=target_project_id and a.decision='pending'
+        and (not client_mode or a.requested_from=auth.uid() or coalesce(a.role_required,'') like 'client%')
+      order by a.requested_at desc limit 10
     ) s),'[]'::jsonb);
   end if;
 
-  if target_allow_documents and q ~ '(document|drawing|revision|issued|release|model|architecture|structure)' then
+  if allow_documents and q ~ '(document|drawing|revision|issued|release|model|architecture|structure)' then
     evidence:=evidence||coalesce((select jsonb_agg(x) from (
       select jsonb_build_object('domain','document','resource_type','document','resource_id',d.id,'label',d.document_number::text||' · '||d.title,'status',d.status,'confidence','A','hash',fv.checksum,'summary','Discipline '||d.discipline||'; revision '||d.revision||'; CDE state '||d.cde_state) x
       from cde.documents d join cde.file_versions fv on fv.id=d.current_version_id
-      where d.project_id=target_project_id and d.status in ('approved','issued') and (not target_client_mode or d.cde_state='published')
+      where d.project_id=target_project_id and d.status in ('approved','issued') and (not client_mode or d.cde_state='published')
       order by d.updated_at desc limit 10
     ) s),'[]'::jsonb);
   end if;
 
-  if target_allow_commercial and q ~ '(invoice|payment|contract|commercial|amount|outstanding|due)' then
+  if allow_commercial and q ~ '(invoice|payment|contract|commercial|amount|outstanding|due)' then
     evidence:=evidence||coalesce((select jsonb_agg(x) from (
       select jsonb_build_object('domain','invoice','resource_type','invoice','resource_id',i.id,'label',i.invoice_number,'status',i.status,'confidence','A','summary','Total '||i.currency||' '||i.total::text||'; paid '||i.amount_paid::text||'; outstanding '||greatest(i.total-i.amount_paid,0)::text||'; due '||i.due_date::text,'amount',greatest(i.total-i.amount_paid,0),'currency',i.currency) x
       from public.invoices i where i.project_id=target_project_id and i.status in ('issued','part_paid','paid','overdue') order by i.issue_date desc limit 10
@@ -123,14 +181,15 @@ begin
   if q ~ '(risk|issue|block|blocking|critical|warning)' then
     evidence:=evidence||coalesce((select jsonb_agg(x) from (
       select jsonb_build_object('domain','risk','resource_type','risk','resource_id',r.id,'label',r.code::text||' · '||r.title,'status',r.status,'confidence','B','summary','Category '||r.category||'; inherent '||r.inherent_level||'; residual '||coalesce(r.residual_level,'—')||'; '||r.description) x
-      from operations.risks r where r.project_id=target_project_id and r.status<>'closed' and (not target_client_mode or r.client_visible=true) order by case r.inherent_level when 'critical' then 0 when 'high' then 1 when 'medium' then 2 else 3 end,r.updated_at desc limit 10
+      from operations.risks r where r.project_id=target_project_id and r.status<>'closed' and (not client_mode or r.client_visible=true)
+      order by case r.inherent_level when 'critical' then 0 when 'high' then 1 when 'medium' then 2 else 3 end,r.updated_at desc limit 10
     ) s),'[]'::jsonb);
   end if;
 
   if q ~ '(change|changed|this week|recent|updated|impact)' then
     evidence:=evidence||coalesce((select jsonb_agg(x) from (
       select jsonb_build_object('domain','change','resource_type','project_change_request','resource_id',cr.id,'label',cr.change_ref||' · '||cr.title,'status',cr.status,'confidence','B','hash',cr.applied_commit_hash,'summary',cr.description||'; updated '||cr.updated_at::text) x
-      from public.project_change_requests cr where cr.project_id=target_project_id and cr.updated_at>=now()-interval '7 days' and (not target_client_mode or cr.status in ('approved','applied')) order by cr.updated_at desc limit 10
+      from public.project_change_requests cr where cr.project_id=target_project_id and cr.updated_at>=now()-interval '7 days' and (not client_mode or cr.status in ('approved','applied')) order by cr.updated_at desc limit 10
     ) s),'[]'::jsonb);
   end if;
 
@@ -144,8 +203,8 @@ begin
   return evidence;
 end;
 $$;
-revoke all on function engagement.build_project_evidence_pack(uuid,text,boolean,boolean,boolean) from public,anon;
-grant execute on function engagement.build_project_evidence_pack(uuid,text,boolean,boolean,boolean) to authenticated;
+revoke all on function engagement.build_project_evidence_pack(uuid,text) from public,anon;
+grant execute on function engagement.build_project_evidence_pack(uuid,text) to authenticated;
 
 create or replace function public.ask_project_grounded(target_project_id uuid,target_question text,target_conversation_id uuid default null)
 returns jsonb
@@ -153,7 +212,29 @@ language plpgsql
 security invoker
 set search_path='public','engagement','project','audit','auth','pg_temp'
 as $$
-declare internal_mode boolean; access_row engagement.client_portal_access%rowtype; client_mode boolean; allow_documents boolean:=true; allow_commercial boolean:=true; conversation engagement.project_conversations%rowtype; user_message engagement.project_messages%rowtype; assistant_message engagement.project_messages%rowtype; evidence jsonb; q text:=lower(btrim(target_question)); answer text; status_value text:='grounded'; confidence_value text:='B'; matched_count int; approval_count int; risk_count int; document_count int; invoice_count int; change_count int; stage_count int; release_count int; outstanding numeric; org_id uuid;
+declare
+  internal_mode boolean;
+  access_row engagement.client_portal_access%rowtype;
+  client_mode boolean;
+  allow_documents boolean:=true;
+  allow_commercial boolean:=true;
+  conversation engagement.project_conversations%rowtype;
+  user_message engagement.project_messages%rowtype;
+  assistant_message engagement.project_messages%rowtype;
+  evidence jsonb;
+  q text:=lower(btrim(target_question));
+  answer text;
+  status_value text:='grounded';
+  confidence_value text:='B';
+  matched_count int;
+  approval_count int;
+  risk_count int;
+  document_count int;
+  invoice_count int;
+  change_count int;
+  stage_count int;
+  release_count int;
+  org_id uuid;
 begin
   if auth.uid() is null then raise exception 'authentication_required'; end if;
   if nullif(q,'') is null or length(q)>2000 then raise exception 'project_question_invalid'; end if;
@@ -169,28 +250,31 @@ begin
   org_id:=engagement.authorized_project_organisation_id(target_project_id);
   perform set_config('conceptspaces.ask_phase','write',true);
   if target_conversation_id is null then
-    insert into engagement.project_conversations(project_id,audience,title,created_by) values(target_project_id,case when client_mode then 'client' else 'internal' end,left(btrim(target_question),120),auth.uid()) returning * into conversation;
+    insert into engagement.project_conversations(project_id,audience,title,created_by)
+    values(target_project_id,case when client_mode then 'client' else 'internal' end,left(btrim(target_question),120),auth.uid()) returning * into conversation;
   else
     select * into conversation from engagement.project_conversations where id=target_conversation_id and project_id=target_project_id and created_by=auth.uid();
     if not found then raise exception 'conversation_not_found'; end if;
   end if;
-  insert into engagement.project_messages(conversation_id,project_id,role,content,citations,confidence,response_status,created_by) values(conversation.id,target_project_id,'user',btrim(target_question),'[]'::jsonb,'B','grounded',auth.uid()) returning * into user_message;
-  evidence:=engagement.build_project_evidence_pack(target_project_id,target_question,client_mode,allow_documents,allow_commercial);
-  select count(*) into matched_count from jsonb_array_elements(evidence);
-  select count(*) into approval_count from jsonb_array_elements(evidence) e where e->>'domain'='approval';
-  select count(*) into risk_count from jsonb_array_elements(evidence) e where e->>'domain'='risk';
-  select count(*) into document_count from jsonb_array_elements(evidence) e where e->>'domain'='document';
-  select count(*),coalesce(sum((e->>'amount')::numeric),0) into invoice_count,outstanding from jsonb_array_elements(evidence) e where e->>'domain'='invoice';
-  select count(*) into change_count from jsonb_array_elements(evidence) e where e->>'domain'='change';
-  select count(*) into stage_count from jsonb_array_elements(evidence) e where e->>'domain'='stage';
-  select count(*) into release_count from jsonb_array_elements(evidence) e where e->>'domain'='release';
+  insert into engagement.project_messages(conversation_id,project_id,role,content,citations,confidence,response_status,created_by)
+  values(conversation.id,target_project_id,'user',btrim(target_question),'[]'::jsonb,'B','grounded',auth.uid()) returning * into user_message;
+
+  evidence:=engagement.build_project_evidence_pack(target_project_id,target_question);
+  select count(*) into matched_count from jsonb_array_elements(evidence) as e;
+  select count(*) into approval_count from jsonb_array_elements(evidence) as e(value) where value->>'domain'='approval';
+  select count(*) into risk_count from jsonb_array_elements(evidence) as e(value) where value->>'domain'='risk';
+  select count(*) into document_count from jsonb_array_elements(evidence) as e(value) where value->>'domain'='document';
+  select count(*) into invoice_count from jsonb_array_elements(evidence) as e(value) where value->>'domain'='invoice';
+  select count(*) into change_count from jsonb_array_elements(evidence) as e(value) where value->>'domain'='change';
+  select count(*) into stage_count from jsonb_array_elements(evidence) as e(value) where value->>'domain'='stage';
+  select count(*) into release_count from jsonb_array_elements(evidence) as e(value) where value->>'domain'='release';
 
   if q ~ '(approval|decision|pending|block|blocking|next)' then
     if approval_count=0 and risk_count=0 then status_value:='not_verified';confidence_value:='D';answer:='Not Verified: no authorised pending approval or visible blocking-risk record currently supports an answer to this question.';
     else answer:='Grounded project state: '||approval_count::text||' pending governed approval(s) and '||risk_count::text||' visible open risk(s) match this question. Each approval citation is bound to its submitted resource hash.';end if;
   elsif q ~ '(invoice|payment|contract|commercial|amount|outstanding|due)' then
     if invoice_count=0 then status_value:='not_verified';confidence_value:='D';answer:='Not Verified: no authorised issued invoice record currently supports the requested commercial answer.';
-    else confidence_value:='A';answer:='Grounded commercial state: '||invoice_count::text||' visible invoice(s) with aggregate outstanding amount '||outstanding::text||' in the cited invoice currencies. Use the cited invoice records for exact currency and due-date context.';end if;
+    else confidence_value:='A';answer:='Grounded commercial state: '||invoice_count::text||' visible invoice record(s) match this question. Exact amount, currency, paid balance and due date are reported per cited invoice; different currencies are never aggregated.';end if;
   elsif q ~ '(document|drawing|revision|issued)' then
     if document_count=0 and release_count=0 then status_value:='not_verified';confidence_value:='D';answer:='Not Verified: no authorised published approved/issued document or issued release matches this question.';
     else confidence_value:='A';answer:='Grounded document state: '||document_count::text||' approved/issued document(s) and '||release_count::text||' issued release package(s) match this question. Exact revisions and hashes are cited below.';end if;
@@ -208,14 +292,29 @@ begin
     else answer:='Grounded project summary: '||approval_count::text||' pending approval(s), '||risk_count::text||' visible open risk(s), '||document_count::text||' matching approved/issued document(s), '||change_count::text||' recent governed change(s), and '||release_count::text||' issued release package(s) are represented in the cited Project Graph records.';end if;
   end if;
 
-  insert into engagement.project_messages(conversation_id,project_id,role,content,citations,confidence,response_status,created_by) values(conversation.id,target_project_id,'assistant',answer,evidence,confidence_value,status_value,auth.uid()) returning * into assistant_message;
-  update engagement.project_conversations set updated_at=now() where id=conversation.id;
+  insert into engagement.project_messages(conversation_id,project_id,role,content,citations,confidence,response_status,created_by)
+  values(conversation.id,target_project_id,'assistant',answer,evidence,confidence_value,status_value,auth.uid()) returning * into assistant_message;
   perform audit.append_event(org_id,target_project_id,case when status_value='not_verified' then 'assistant.answer_not_verified' else 'assistant.answer_grounded' end,'project_message',assistant_message.id,null,jsonb_build_object('conversation_id',conversation.id,'confidence',confidence_value,'response_status',status_value,'citation_count',matched_count),null,gen_random_uuid());
   return jsonb_build_object('conversation_id',conversation.id,'message_id',assistant_message.id,'answer',answer,'citations',evidence,'confidence',confidence_value,'response_status',status_value);
 end;
 $$;
 revoke all on function public.ask_project_grounded(uuid,text,uuid) from public,anon;
 grant execute on function public.ask_project_grounded(uuid,text,uuid) to authenticated;
+
+create or replace function public.list_project_conversations(target_project_id uuid)
+returns jsonb
+language plpgsql
+stable
+security invoker
+set search_path='engagement','project','auth','pg_temp'
+as $$
+begin
+  if auth.uid() is null or not (project.can_access_project(target_project_id) or engagement.client_can_access_project(target_project_id)) then raise exception 'PROJECT_ASSISTANT_PERMISSION_DENIED'; end if;
+  return coalesce((select jsonb_agg(to_jsonb(c) order by c.created_at desc) from engagement.project_conversations c where c.project_id=target_project_id and c.created_by=auth.uid()),'[]'::jsonb);
+end;
+$$;
+revoke all on function public.list_project_conversations(uuid) from public,anon;
+grant execute on function public.list_project_conversations(uuid) to authenticated;
 
 create or replace function public.list_project_conversation(target_conversation_id uuid)
 returns jsonb
