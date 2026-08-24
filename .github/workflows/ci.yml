@@ -23,6 +23,8 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
       - name: Repository security and migration gates
         run: node scripts/quality-gates.mjs
+      - name: Accessibility and human-factors source gate
+        run: npm run accessibility
       - name: TypeScript
         run: npm run typecheck
       - name: Test suites
