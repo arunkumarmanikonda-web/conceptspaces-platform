@@ -1,12 +1,15 @@
-export default function SecurityAdmin(){
-  const findings=[
-    ['SEC-041','Dependency','High','Remediating','Due before production activation'],
-    ['SEC-040','Configuration','Medium','Open','CSP hardening review'],
-    ['SEC-039','Secret scan','Critical','Verified','No committed secret']
-  ];
-  return <>
-    <div className="topbar"><div><div className="demo">Super Admin / Security</div><h1>Security Assurance</h1><div className="subtle">Findings, remediation, evidence, time-bounded risk acceptance and compensating controls remain visible to authorised security governance.</div></div></div>
-    <div className="panel"><table><thead><tr><th>Finding</th><th>Source</th><th>Severity</th><th>Status</th><th>Control</th></tr></thead><tbody>{findings.map(r=><tr key={r[0]}>{r.map(c=><td key={c}>{c}</td>)}</tr>)}</tbody></table></div>
-    <div className="note" style={{marginTop:18}}><b>Critical-risk rule.</b> A critical security finding cannot be silently waived. Acceptance requires named authority, explicit compensating controls, an expiry date and recurring review.</div>
-  </>;
+import Link from "next/link";
+import {requireWorkspaceUser} from "@/lib/auth";
+import PrivacySecurityClient,{type PrivacySecurityState,type SecurityFinding} from "@/components/PrivacySecurityClient";
+
+export const dynamic="force-dynamic";
+type Org={id:string;name:string;role_code:string};
+export default async function SecurityAdmin({searchParams}:{searchParams:Promise<{org?:string}>}){
+ const {supabase}=await requireWorkspaceUser();const {data:orgData,error:orgError}=await supabase.rpc("list_user_organisations");if(orgError)throw new Error(orgError.message);const orgs=(orgData||[]) as Org[];const params=await searchParams;const org=orgs.find(o=>o.id===params.org)||orgs[0];let state:PrivacySecurityState={processing:[],consents:[],retention:[],requests:[],exports:[],projects:[]};let findings:SecurityFinding[]=[];
+ if(org){const [{data,error},{data:findingData,error:findingError}]=await Promise.all([supabase.rpc("list_privacy_security_workspace",{target_organisation_id:org.id}),supabase.from("security_findings").select("id,source,title,severity,affected_component,status,detected_at,due_at").order("detected_at",{ascending:false}).limit(100)]);if(error)throw new Error(error.message);if(findingError)throw new Error(findingError.message);state=data as PrivacySecurityState;findings=(findingData||[]) as SecurityFinding[];}
+ return <>
+  <div className="topbar"><div><div className="demo">Super Admin / Security, Privacy & Audit</div><h1>Security Assurance</h1><div className="subtle">Live project classification, privacy governance, retention, restricted exports, security findings and tamper-evident audit verification.</div></div></div>
+  <section className="panel"><h3>Organisation</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{orgs.map(o=><Link key={o.id} href={`/app/admin/security?org=${o.id}`} className={org?.id===o.id?"btn":"btn ghost"} style={{padding:"8px 11px"}}>{o.name}</Link>)}</div></section>
+  {org?<div style={{marginTop:16}}><PrivacySecurityClient organisationId={org.id} state={state} findings={findings}/></div>:<div className="note" style={{marginTop:18}}>No active organisation membership is available.</div>}
+ </>;
 }
