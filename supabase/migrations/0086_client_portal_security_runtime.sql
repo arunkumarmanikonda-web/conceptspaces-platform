@@ -2,9 +2,15 @@ begin;
 
 alter table engagement.client_portal_access
   add column if not exists user_id uuid references auth.users(id) on delete set null,
+  add column if not exists invited_email text,
   add column if not exists permissions jsonb not null default '{}'::jsonb,
   add column if not exists access_hash text,
   add column if not exists updated_at timestamptz not null default now();
+
+update engagement.client_portal_access a
+set invited_email=lower(c.email)
+from public.contacts c
+where c.id=a.contact_id and a.invited_email is null and c.email is not null;
 
 alter table operations.risks
   add column if not exists client_visible boolean not null default false;
@@ -32,7 +38,8 @@ as $$
     else '{}'::jsonb
   end;
 $$;
-revoke all on function engagement.client_role_permissions(text) from public,anon,authenticated;
+revoke all on function engagement.client_role_permissions(text) from public,anon;
+grant execute on function engagement.client_role_permissions(text) to authenticated;
 
 create or replace function engagement.guard_client_portal_access_row()
 returns trigger
@@ -46,6 +53,7 @@ begin
     if new.contact_id is distinct from old.contact_id
        or new.project_id is distinct from old.project_id
        or new.opportunity_id is distinct from old.opportunity_id
+       or new.invited_email is distinct from old.invited_email
        or new.role is distinct from old.role
        or new.permissions is distinct from old.permissions
        or new.invited_by is distinct from old.invited_by
@@ -59,7 +67,7 @@ begin
   new.updated_at:=now();
   new.access_hash:=encode(extensions.digest(jsonb_build_object(
     'id',new.id,'contact_id',new.contact_id,'project_id',new.project_id,'opportunity_id',new.opportunity_id,
-    'user_id',new.user_id,'role',new.role,'permissions',new.permissions,'status',new.status,
+    'invited_email',new.invited_email,'user_id',new.user_id,'role',new.role,'permissions',new.permissions,'status',new.status,
     'invited_by',new.invited_by,'invited_at',new.invited_at,'activated_at',new.activated_at,'revoked_at',new.revoked_at
   )::text,'sha256'),'hex');
   return new;
@@ -79,14 +87,7 @@ create policy client_portal_self_read on engagement.client_portal_access
 for select to authenticated
 using (
   (user_id=auth.uid() and status in ('active','suspended'))
-  or (
-    status='invited' and user_id is null and exists(
-      select 1 from public.contacts c
-      where c.id=contact_id
-        and c.email is not null
-        and lower(c.email)=lower(coalesce(auth.jwt()->>'email',''))
-    )
-  )
+  or (status='invited' and user_id is null and invited_email is not null and lower(invited_email)=lower(coalesce(auth.jwt()->>'email','')))
 );
 
 drop policy if exists client_portal_governed_insert on engagement.client_portal_access;
@@ -98,41 +99,15 @@ with check (
   and project.can_manage_project(project_id)
   and invited_by=auth.uid()
   and user_id is null
+  and invited_email is not null
   and status='invited'
 );
 
 drop policy if exists client_portal_governed_update on engagement.client_portal_access;
 create policy client_portal_governed_update on engagement.client_portal_access
 for update to authenticated
-using (
-  (current_setting('conceptspaces.client_portal_phase',true)='manage' and project_id is not null and project.can_manage_project(project_id))
-  or (
-    current_setting('conceptspaces.client_portal_phase',true)='activate'
-    and status='invited'
-    and user_id is null
-    and exists(
-      select 1 from public.contacts c
-      where c.id=contact_id
-        and c.email is not null
-        and lower(c.email)=lower(coalesce(auth.jwt()->>'email',''))
-    )
-  )
-)
-with check (
-  (current_setting('conceptspaces.client_portal_phase',true)='manage' and project_id is not null and project.can_manage_project(project_id))
-  or (
-    current_setting('conceptspaces.client_portal_phase',true)='activate'
-    and status='active'
-    and user_id=auth.uid()
-    and activated_at is not null
-    and exists(
-      select 1 from public.contacts c
-      where c.id=contact_id
-        and c.email is not null
-        and lower(c.email)=lower(coalesce(auth.jwt()->>'email',''))
-    )
-  )
-);
+using (current_setting('conceptspaces.client_portal_phase',true)='manage' and project_id is not null and project.can_manage_project(project_id))
+with check (current_setting('conceptspaces.client_portal_phase',true)='manage' and project_id is not null and project.can_manage_project(project_id));
 
 create or replace function engagement.client_can_access_project(target_project_id uuid)
 returns boolean
@@ -164,17 +139,17 @@ begin
   select * into p from project.projects where id=target_project_id;
   if not found then raise exception 'project_not_found'; end if;
   select * into c from public.contacts where id=target_contact_id and organisation_id=p.organisation_id;
-  if not found or c.email is null then raise exception 'client_contact_with_email_required'; end if;
+  if not found or nullif(btrim(c.email),'') is null then raise exception 'client_contact_with_email_required'; end if;
   perms:=engagement.client_role_permissions(role_value);
   select * into access_row from engagement.client_portal_access where project_id=target_project_id and contact_id=target_contact_id and status in ('invited','active','suspended') order by created_at desc limit 1 for update;
   if found then
     if access_row.status='suspended' then raise exception 'client_access_suspended_requires_explicit_reactivation'; end if;
     perform set_config('conceptspaces.client_portal_phase','manage',true);
-    update engagement.client_portal_access set role=role_value,permissions=perms where id=access_row.id returning * into access_row;
+    update engagement.client_portal_access set role=role_value,permissions=perms,invited_email=lower(c.email) where id=access_row.id returning * into access_row;
   else
     perform set_config('conceptspaces.client_portal_phase','grant',true);
-    insert into engagement.client_portal_access(contact_id,project_id,role,status,permissions,invited_by,invited_at)
-    values(target_contact_id,target_project_id,role_value,'invited',perms,auth.uid(),now()) returning * into access_row;
+    insert into engagement.client_portal_access(contact_id,project_id,role,status,invited_email,permissions,invited_by,invited_at)
+    values(target_contact_id,target_project_id,role_value,'invited',lower(c.email),perms,auth.uid(),now()) returning * into access_row;
   end if;
   perform audit.append_event(p.organisation_id,p.id,'client.portal.access_granted','client_portal_access',access_row.id,null,to_jsonb(access_row),access_row.access_hash,gen_random_uuid());
   return access_row.id;
@@ -183,16 +158,32 @@ $$;
 revoke all on function public.grant_client_portal_access(uuid,uuid,text) from public,anon;
 grant execute on function public.grant_client_portal_access(uuid,uuid,text) to authenticated;
 
+create or replace function public.list_my_client_portal_invitations()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path='engagement','project','auth','pg_temp'
+as $$
+declare client_email text:=lower(coalesce(auth.jwt()->>'email',''));
+begin
+  if auth.uid() is null or client_email='' then raise exception 'authenticated_email_required'; end if;
+  return coalesce((select jsonb_agg(jsonb_build_object('access_id',a.id,'project_id',p.id,'project_code',p.code::text,'project_name',p.name,'role',a.role,'status',a.status,'invited_at',a.invited_at,'access_hash',a.access_hash) order by a.invited_at desc) from engagement.client_portal_access a join project.projects p on p.id=a.project_id where a.status='invited' and a.user_id is null and lower(a.invited_email)=client_email),'[]'::jsonb);
+end;
+$$;
+revoke all on function public.list_my_client_portal_invitations() from public,anon;
+grant execute on function public.list_my_client_portal_invitations() to authenticated;
+
 create or replace function public.activate_client_portal_access(target_access_id uuid)
 returns uuid
 language plpgsql
-security invoker
+security definer
 set search_path='public','engagement','project','audit','auth','pg_temp'
 as $$
 declare access_row engagement.client_portal_access%rowtype; p project.projects%rowtype; client_email text:=lower(coalesce(auth.jwt()->>'email',''));
 begin
   if auth.uid() is null or client_email='' then raise exception 'authenticated_email_required'; end if;
-  select a.* into access_row from engagement.client_portal_access a join public.contacts c on c.id=a.contact_id where a.id=target_access_id and a.status='invited' and a.user_id is null and c.email is not null and lower(c.email)=client_email for update;
+  select * into access_row from engagement.client_portal_access where id=target_access_id and status='invited' and user_id is null and invited_email is not null and lower(invited_email)=client_email for update;
   if not found then raise exception 'client_invitation_not_available_for_current_identity'; end if;
   if access_row.project_id is null then raise exception 'client_project_required'; end if;
   select * into p from project.projects where id=access_row.project_id;
