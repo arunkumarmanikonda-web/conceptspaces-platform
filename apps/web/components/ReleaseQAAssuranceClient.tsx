@@ -1,0 +1,12 @@
+"use client";
+import {useState,useTransition} from "react";
+import {useRouter} from "next/navigation";
+import {createClient} from "@/lib/supabase";
+
+type SafetyCase={id:string;package_reference?:string|null;package_type:string;content_hash?:string|null;state:string;unresolved_critical_defects:number;evidence_bundle_hash?:string|null;evidence_manifest?:unknown[];last_evaluated_at?:string|null};
+const short=(v?:string|null)=>v?`${v.slice(0,14)}…`:"—";
+export default function ReleaseQAAssuranceClient({cases}:{cases:SafetyCase[]}){
+ const supabase=createClient();const router=useRouter();const [message,setMessage]=useState("");const [busy,startTransition]=useTransition();
+ async function capture(id:string){const {data,error}=await supabase.rpc("capture_release_qa_check",{target_safety_case_id:id,target_reason:"Captured current design-linter findings and accepted waivers for Proof Before Publish"});if(error){setMessage(error.message);return;}setMessage(`QA evidence ${String(data).slice(0,8)} captured. Re-evaluate the Safety Case before approval/issue.`);startTransition(()=>router.refresh());}
+ return <section className="panel"><div className="topbar"><div><h3>Mandatory QA / Waiver Evidence</h3><div className="subtle">Every Safety Case requires a fresh linter snapshot. Open critical findings block release unless linked to an independently accepted waiver with rationale.</div></div></div>{message&&<div className="note" aria-live="polite">{message}{busy?" Refreshing…":""}</div>}<div style={{overflowX:"auto"}}><table className="table"><thead><tr><th>Package</th><th>State</th><th>Critical</th><th>Evidence bundle</th><th>Manifest</th><th>Action</th></tr></thead><tbody>{cases.map(c=><tr key={c.id}><td>{c.package_reference||c.package_type}<div className="subtle">{short(c.content_hash)}</div></td><td><span className="badge">{c.state}</span></td><td>{c.unresolved_critical_defects}</td><td><code>{short(c.evidence_bundle_hash)}</code></td><td>{Array.isArray(c.evidence_manifest)?c.evidence_manifest.length:0} evidence type(s)</td><td>{c.state!=="issued"?<button className="btn ghost" type="button" onClick={()=>capture(c.id)}>Capture QA Snapshot</button>:<span className="subtle">Issued evidence frozen</span>}</td></tr>)}{cases.length===0&&<tr><td colSpan={6} className="subtle">No Release Safety Cases exist yet.</td></tr>}</tbody></table></div></section>;
+}
