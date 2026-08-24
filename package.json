@@ -7,7 +7,8 @@
     "dev": "npm run dev -w @conceptspaces/web",
     "build": "npm run build -w @conceptspaces/web",
     "typecheck": "npm run typecheck -ws --if-present",
-    "test": "npm run test -ws --if-present"
+    "test": "npm run test -ws --if-present",
+    "accessibility": "node scripts/accessibility-gate.mjs"
   },
   "engines": {"node":">=22"}
 }
