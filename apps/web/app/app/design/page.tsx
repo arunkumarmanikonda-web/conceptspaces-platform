@@ -1,14 +1,11 @@
-const options=[
-  ["Option A","Balanced","31,480 sqm","82%","B"],
-  ["Option B","Commercial Yield","33,120 sqm","74%","B"],
-  ["Option C","Environmental","29,860 sqm","91%","B"]
-];
+import Link from "next/link";
+import {requireWorkspaceUser} from "@/lib/auth";
+import CompilerRuntimeClient,{type CompilerState} from "@/components/CompilerRuntimeClient";
 
-export default function DesignPage(){
-  return <>
-    <div className="topbar"><div><div className="demo">Building Compiler / Concept</div><h1>Design Intelligence</h1><div className="subtle">Generate, compare, branch, validate and explain design options</div></div><button className="btn">Generate Options</button></div>
-    <div className="kpis">{[["Active Options","03"],["Requirements Traced","96%"],["Compliance Passed","28 / 31"],["Critical Failures","00"],["Client Selection","Pending"]].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value">{v}</div><div className="subtle">Illustrative</div></div>)}</div>
-    <section className="panel" style={{marginTop:16}}><h3>Pareto Design Options</h3><table className="table"><thead><tr><th>Option</th><th>Optimisation</th><th>Buildable Area</th><th>Daylight Score</th><th>Confidence</th></tr></thead><tbody>{options.map(row=><tr key={row[0]}><td>{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td><span className="badge">{row[4]}</span></td></tr>)}</tbody></table></section>
-    <div className="grid-3"><div className="card"><div className="eyebrow">Building Git</div><h3>Branch without losing truth</h3><p>Every design alternative has a parent, rationale, requirement baseline and change-impact trail. A discarded option is retained as history, not silently overwritten.</p></div><div className="card"><div className="eyebrow">Voice to Design</div><h3>Structured intent, not raw prompting</h3><p>Architect voice, text or sketch inputs are converted into explicit structured changes before implementation and revalidation.</p></div><div className="card"><div className="eyebrow">Design Assurance Ledger</div><h3>Explain every important decision</h3><p>What changed, why, source, confidence, author, approver, affected requirements and downstream blast radius remain traceable.</p></div></div>
-  </>;
+export const dynamic="force-dynamic";
+type ProjectRow={id:string;code:string;name:string;typology:string;stage:string;criticality:string;status:string};
+const emptyState:CompilerState={run:null,stages:[],candidates:[],branches:[]};
+export default async function DesignPage({searchParams}:{searchParams:Promise<{project?:string}>}){
+ const {supabase}=await requireWorkspaceUser();const {data:projectData,error:projectError}=await supabase.rpc("list_accessible_projects");if(projectError)throw new Error(projectError.message);const projects=(projectData||[]) as ProjectRow[];const params=await searchParams;const project=projects.find(p=>p.id===params.project)||projects[0];let state=emptyState;if(project){const {data,error}=await supabase.rpc("list_project_compiler_state",{target_project_id:project.id});if(error)throw new Error(error.message);state=(data||emptyState) as CompilerState;}
+ return <><div className="topbar"><div><div className="demo">Design Intelligence / Building Compiler™</div><h1>Design Intelligence</h1><div className="subtle">Freeze verified project inputs, run governed feasibility/design stages, compare deterministic candidates and let humans shortlist without overwriting approved truth.</div></div><div style={{display:"flex",gap:8}}><Link className="btn ghost" href="/app/branches">Building Git</Link><Link className="btn ghost" href="/app/change-impact">Change Impact</Link></div></div><section className="panel"><h3>Project</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{projects.map(p=><Link key={p.id} href={`/app/design?project=${p.id}`} className={project?.id===p.id?"btn":"btn ghost"} style={{padding:"8px 11px"}}>{p.code} · {p.name}</Link>)}</div>{projects.length===0&&<div className="note">No accessible project exists yet.</div>}</section>{project&&<div style={{marginTop:18}}><CompilerRuntimeClient projectId={project.id} state={state}/></div>}<div className="note"><b>No global “best” option.</b> Candidate metrics remain tied to the frozen compiler input version and deterministic stage evidence. Human shortlisting is a recorded decision; professional Architecture/Engineering release remains downstream and independent.</div></>;
 }
