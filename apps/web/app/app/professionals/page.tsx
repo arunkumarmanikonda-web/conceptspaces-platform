@@ -1,16 +1,19 @@
-const roles=[
-  ['Lead Architect','Architecture','Concept → Handover','Required','Unassigned'],
-  ['Structural Engineer','Structure','Design Development → Issue','Required','Unassigned'],
-  ['MEPF Lead','MEPF','Concept → Handover','Required','Unassigned'],
-  ['Interior Design Lead','Interiors','Concept → Installation','Optional','Unassigned'],
-  ['Quantity Surveyor','Cost','Design Development → Closeout','Required','Unassigned'],
-  ['Project Manager','PMC','Tender → Handover','Optional','Unassigned']
-];
+import Link from "next/link";
+import {requireWorkspaceUser} from "@/lib/auth";
+import ProfessionalNetworkClient,{type ProfessionalWorkspaceState} from "@/components/ProfessionalNetworkClient";
 
-export default function ProfessionalsPage(){
-  return <>
-    <div className="topbar"><div><div className="demo">Professional Resource ERP</div><h1>Project Team & Authority</h1><div className="subtle">Assign the right professional by discipline, stage, credential eligibility, capacity and project authority.</div></div><button className="btn">Find Professional</button></div>
-    <div className="kpis">{[['Required Roles','04'],['Assigned','00'],['Credential Blocks','00'],['Capacity Risks','00'],['SPOC','Lead Architect']].map(([label,value])=><div className="kpi" key={label}><div className="label">{label}</div><div className="value">{value}</div><div className="subtle">Illustrative</div></div>)}</div>
-    <div className="panel-grid"><section className="panel"><h3>Role Requirements</h3><table className="table"><thead><tr><th>Role</th><th>Discipline</th><th>Stage</th><th>Requirement</th><th>Assignment</th></tr></thead><tbody>{roles.map(r=><tr key={r[0]}><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td><td><span className="badge">{r[4]}</span></td></tr>)}</tbody></table></section><section className="panel"><h3>Authority Binding</h3><p className="subtle">Assignment to a project does not automatically grant approval authority. Credential type, verification state, discipline, stage, role and release criticality are evaluated separately.</p><div className="note"><b>Lead Architect as SPOC.</b> Client coordination may be centralised through the lead architect while discipline professionals retain independent technical accountability for their own governed releases.</div></section></div>
-  </>;
+export const dynamic="force-dynamic";
+type Org={id:string;name:string;role_code:string};type Project={id:string;code:string;name:string;typology:string;stage:string;criticality:string;status:string};
+const empty:ProfessionalWorkspaceState={profiles:[],assignments:[],conflicts:[],performance:[],assignment_events:[]};
+
+export default async function ProfessionalsPage({searchParams}:{searchParams:Promise<{org?:string;project?:string}>}){
+ const {supabase,user}=await requireWorkspaceUser();const params=await searchParams;
+ const {data:orgData,error:orgError}=await supabase.rpc("list_user_organisations");if(orgError)throw new Error(orgError.message);const orgs=(orgData||[]) as Org[];const org=orgs.find(o=>o.id===params.org)||orgs[0];let projects:Project[]=[];let project:Project|undefined;let state=empty;
+ if(org){const {data:projectData,error:projectError}=await supabase.rpc("list_accessible_projects_for_org",{target_organisation_id:org.id});if(projectError)throw new Error(projectError.message);projects=(projectData||[]) as Project[];project=projects.find(p=>p.id===params.project)||projects[0];const {data,error}=await supabase.rpc("list_professional_workspace",{target_organisation_id:org.id,target_project_id:project?.id||null});if(error)throw new Error(error.message);state=(data||empty) as ProfessionalWorkspaceState;}
+ return <>
+  <div className="topbar"><div><div className="demo">F26 / Professional Network & Authority</div><h1>Professional Network</h1><div className="subtle">Credential-aware profiles, deterministic eligibility filtering, workload and conflict controls, history-preserving assignment/replacement, and source-traceable performance.</div></div></div>
+  <section className="panel"><h3>Organisation</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{orgs.map(o=><Link key={o.id} href={`/app/professionals?org=${o.id}`} className={org?.id===o.id?"btn":"btn ghost"} style={{padding:"8px 11px"}}>{o.name}</Link>)}</div></section>
+  {org&&<><section className="panel"><h3>Project Context</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{projects.map(p=><Link key={p.id} href={`/app/professionals?org=${org.id}&project=${p.id}`} className={project?.id===p.id?"btn":"btn ghost"} style={{padding:"8px 11px"}}>{p.code} · {p.name}</Link>)}</div>{projects.length===0&&<div className="subtle">No accessible project. Organisation-level professional profiles and credentials remain available.</div>}</section><ProfessionalNetworkClient organisationId={org.id} projectId={project?.id} currentUserId={user.id} state={state}/></>}
+  {!org&&<div className="note">No active organisation membership is available.</div>}
+ </>;
 }
