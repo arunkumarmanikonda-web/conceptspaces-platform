@@ -1,18 +1,24 @@
 import Link from "next/link";
+import {requireWorkspaceUser} from "@/lib/auth";
+import type {DesignProject,ProgrammeWorkspaceState,ClimateWorkspaceState,EconomicsWorkspaceState} from "@/components/design-domain-runtime-types";
+import type {CompilerState} from "@/components/CompilerRuntimeClient";
 
-const lanes=[
-  ['Programme Intelligence','/app/programme','Typology-driven spaces, adjacencies, areas and client priorities.'],
-  ['Climate & Environment','/app/climate','Solar, daylight, wind, energy, water, flood and carbon context.'],
-  ['Development Economics','/app/economics','Yield, capex, value, absorption, sensitivity and value engineering.'],
-  ['Site Truth','/app/site-truth','Verified geometry, constraints, source confidence and jurisdiction.'],
-  ['Design Intelligence','/app/design','Generate and compare options only after inputs are sufficiently trustworthy.']
-];
-
-export default function FeasibilityPage(){
-  return <>
-    <div className="topbar"><div><div className="demo">Feasibility Intelligence / Pre-Design</div><h1>Development Feasibility</h1><div className="subtle">Convert a site, regulations, client intent, climate and commercial assumptions into a traceable development scenario before design commitment.</div></div><button className="btn">Create Scenario</button></div>
-    <div className="kpis">{[['Site Truth','B'],['Programme','Draft'],['Climate Context','C'],['Scenarios','03'],['Critical Unknowns','02']].map(([label,value])=><div className="kpi" key={label}><div className="label">{label}</div><div className="value">{value}</div><div className="subtle">Illustrative</div></div>)}</div>
-    <div className="grid-3" style={{marginTop:18}}>{lanes.map(([name,href,desc],index)=><Link href={href} className="card" key={name}><div className="eyebrow">0{index+1}</div><h3>{name}</h3><p>{desc}</p><span className="badge">Open Workspace</span></Link>)}</div>
-    <div className="panel" style={{marginTop:18}}><h3>Feasibility Trust Chain</h3><p className="subtle">Verified site truth → applicable regulation → programme brief → climate/environmental context → design scenario → cost/value assumptions → sensitivity → decision ledger. A scenario with material D-confidence assumptions is not represented as decision-grade.</p></div>
-  </>;
+export const dynamic="force-dynamic";
+type TruthRow={id:string;confidence:string;status:string;criticality:string};
+type RegulaState={applicability?:unknown[];latest_findings?:Array<{status?:string;disposition?:string}>;latest_run?:Record<string,unknown>|null};
+const emptyCompiler:CompilerState={run:null,stages:[],candidates:[],branches:[]};
+export default async function FeasibilityPage({searchParams}:{searchParams:Promise<{project?:string}>}){
+ const {supabase}=await requireWorkspaceUser();const {data:projectData,error:projectError}=await supabase.rpc("list_accessible_projects");if(projectError)throw new Error(projectError.message);const projects=(projectData||[]) as DesignProject[];const params=await searchParams;const project=projects.find(p=>p.id===params.project)||projects[0];
+ let truth:TruthRow[]=[];let regula:RegulaState={};let programme:ProgrammeWorkspaceState={baselines:[],items:[],requirements:[]};let climate:ClimateWorkspaceState={studies:[]};let economics:EconomicsWorkspaceState={scenarios:[]};let compiler:CompilerState=emptyCompiler;
+ if(project){const [t,r,p,c,e,b]=await Promise.all([supabase.rpc("list_project_truth_state",{target_project_id:project.id}),supabase.rpc("list_project_regula_state",{target_project_id:project.id}),supabase.rpc("list_programme_workspace",{target_project_id:project.id}),supabase.rpc("list_climate_workspace",{target_project_id:project.id}),supabase.rpc("list_economics_workspace",{target_project_id:project.id}),supabase.rpc("list_project_compiler_state",{target_project_id:project.id})]);for(const result of [t,r,p,c,e,b])if(result.error)throw new Error(result.error.message);truth=(t.data||[]) as TruthRow[];regula=(r.data||{}) as RegulaState;programme=(p.data||programme) as ProgrammeWorkspaceState;climate=(c.data||climate) as ClimateWorkspaceState;economics=(e.data||economics) as EconomicsWorkspaceState;compiler=(b.data||emptyCompiler) as CompilerState;}
+ const approvedProgramme=programme.baselines.find(x=>x.status==="approved");const approvedClimate=climate.studies.filter(x=>x.status==="approved");const selectedEconomics=economics.scenarios.find(x=>x.status==="selected");const criticalTruth=truth.filter(x=>x.criticality==="C4"&&x.status!=="verified"&&x.status!=="approved").length;const unresolvedReg=(regula.latest_findings||[]).filter(x=>!["passed","compliant","resolved","accepted"].includes(String(x.status||x.disposition||"").toLowerCase())).length;
+ const lanes=[
+  ["Project Truth","/app/site-truth",`${truth.length} current facts · ${criticalTruth} unresolved C4`],
+  ["REGULA™","/app/regula",`${regula.applicability?.length||0} applicable packs · ${unresolvedReg} unresolved findings`],
+  ["Programme","/app/programme",approvedProgramme?`Approved v${approvedProgramme.version} · ${programme.items.filter(i=>i.programme_baseline_id===approvedProgramme.id).length} items`:"No approved baseline"],
+  ["Climate","/app/climate",`${approvedClimate.length} approved studies · ${climate.studies.filter(s=>s.confidence==="D").length} D-confidence`],
+  ["Economics","/app/economics",selectedEconomics?`Selected: ${selectedEconomics.name} v${selectedEconomics.version}`:"No selected scenario"],
+  ["Design Compiler","/app/design",compiler.run?`${compiler.run.status} · ${compiler.candidates.length} candidates`:"No compiler run"]
+ ];
+ return <><div className="topbar"><div><div className="demo">Feasibility Intelligence / Trust Chain</div><h1>Development Feasibility</h1><div className="subtle">Live readiness across verified site truth, regulation, programme, climate, economics and the governed Building Compiler.</div></div></div><section className="panel"><h3>Project</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{projects.map(p=><Link key={p.id} href={`/app/feasibility?project=${p.id}`} className={project?.id===p.id?"btn":"btn ghost"} style={{padding:"8px 11px"}}>{p.code} · {p.name}</Link>)}</div>{!project&&<div className="note">No accessible project exists yet.</div>}</section>{project&&<><div className="kpis">{[["Current Truth",String(truth.length).padStart(2,"0")],["Critical Truth Gaps",String(criticalTruth).padStart(2,"0")],["Regulatory Findings",String(unresolvedReg).padStart(2,"0")],["Approved Climate",String(approvedClimate.length).padStart(2,"0")],["Compiler Candidates",String(compiler.candidates.length).padStart(2,"0")]].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value">{v}</div><div className="subtle">Live project state</div></div>)}</div><div className="grid-3" style={{marginTop:18}}>{lanes.map(([name,href,desc],index)=><Link href={`${href}?project=${project.id}`} className="card" key={name}><div className="eyebrow">0{index+1}</div><h3>{name}</h3><p>{desc}</p><span className="badge">Open governed workspace</span></Link>)}</div></>}<div className="note" style={{marginTop:18}}><b>Feasibility trust chain.</b> A numerical option is not decision-grade merely because it exists. Site/regulatory uncertainty, unapproved programme or climate evidence and unreviewed economics remain visible and continue to constrain downstream release.</div></>;
 }

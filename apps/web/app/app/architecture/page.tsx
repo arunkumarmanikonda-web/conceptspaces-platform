@@ -1,15 +1,13 @@
-const packages=[
-  ["Concept Architecture","Concept","v04","94%","For Review"],
-  ["GA Plans","Schematic","v03","97%","Coordinating"],
-  ["Elevations & Sections","Schematic","v02","91%","Coordinating"],
-  ["Door / Window Schedules","DD","v01","76%","Draft"]
-];
+import Link from "next/link";
+import {requireWorkspaceUser} from "@/lib/auth";
+import {ArchitectureWorkspaceClient} from "@/components/ArchitectureStructureWorkspaceClients";
+import {emptyArchitectureWorkspace,type ArchitectureWorkspaceState,type DesignProject} from "@/components/design-domain-runtime-types";
 
-export default function ArchitecturePage(){
-  return <>
-    <div className="topbar"><div><div className="demo">Architecture / Building Compiler™</div><h1>Architecture</h1><div className="subtle">Programme, zoning, circulation, drawings, model coordination and requirement coverage</div></div><button className="btn">New Architecture Package</button></div>
-    <div className="kpis">{[["Programme Coverage","96%"],["Active Packages","04"],["Open Coordination","11"],["Client Decisions","03"],["Release Confidence","B"]].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value" style={{fontSize:String(v).length>8?18:30}}>{v}</div><div className="subtle">Illustrative</div></div>)}</div>
-    <section className="panel" style={{marginTop:16}}><h3>Architecture Packages</h3><table className="table"><thead><tr><th>Package</th><th>Stage</th><th>Version</th><th>Requirement Coverage</th><th>Status</th></tr></thead><tbody>{packages.map(row=><tr key={row[0]}><td>{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td><span className="badge">{row[4]}</span></td></tr>)}</tbody></table></section>
-    <div className="grid-3"><div className="card"><div className="eyebrow">Space Programme</div><h3>Every room traces to intent</h3><p>Areas, adjacencies, capacity, access, servicing, daylight and operational requirements remain linked to project requirements rather than becoming disconnected drawing notes.</p></div><div className="card"><div className="eyebrow">Change Impact</div><h3>Design changes expose blast radius</h3><p>A planning change identifies affected structure, MEP, interiors, cost, regulation, documentation and client decisions before release.</p></div><div className="card"><div className="eyebrow">Issue Authority</div><h3>Draft is not issued</h3><p>Architecture packages become issued deliverables only through the applicable coordination and professional approval gates.</p></div></div>
-  </>;
+type Credential={id:string;credential_type:string;issuing_body:string;registration_number:string;discipline?:string|null;valid_until?:string|null;verification_status:string};
+type ValidationState={credentials?:Credential[]};
+export const dynamic="force-dynamic";
+export default async function ArchitecturePage({searchParams}:{searchParams:Promise<{project?:string}>}){
+ const {supabase}=await requireWorkspaceUser();const {data:projectData,error:projectError}=await supabase.rpc("list_accessible_projects");if(projectError)throw new Error(projectError.message);const projects=(projectData||[]) as DesignProject[];const params=await searchParams;const project=projects.find(p=>p.id===params.project)||projects[0];let state:ArchitectureWorkspaceState=emptyArchitectureWorkspace;let credentials:Credential[]=[];
+ if(project){const [workspace,validation]=await Promise.all([supabase.rpc("list_architecture_workspace",{target_project_id:project.id}),supabase.rpc("list_engineering_validation_workspace")]);if(workspace.error)throw new Error(workspace.error.message);if(validation.error)throw new Error(validation.error.message);state=(workspace.data||emptyArchitectureWorkspace) as ArchitectureWorkspaceState;credentials=((validation.data||{}) as ValidationState).credentials||[];}
+ return <><div className="topbar"><div><div className="demo">Architecture / Building Compiler™ / Professional Release</div><h1>Architecture</h1><div className="subtle">Approved programme basis, design-option trace, versioned packages, requirement coverage, professional maker-checker approval and immutable issue evidence.</div></div></div><section className="panel"><h3>Project</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{projects.map(p=><Link key={p.id} href={`/app/architecture?project=${p.id}`} className={project?.id===p.id?"btn":"btn ghost"} style={{padding:"8px 11px"}}>{p.code} · {p.name}</Link>)}</div>{!project&&<div className="note">No accessible project exists yet.</div>}</section>{project&&<ArchitectureWorkspaceClient projectId={project.id} state={state} credentials={credentials}/>}<div className="note"><b>Release authority.</b> Architecture is not issued because drawings appear complete. Approval requires an independent, current professional credential against the exact package hash; issue creates a final hash and the issued record becomes immutable.</div></>;
 }

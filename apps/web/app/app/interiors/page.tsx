@@ -1,15 +1,12 @@
-const rooms=[
-  ["Guest Room Type A","Modern Elite / Warm Minimal","DD","12 / 14","For Review"],
-  ["All Day Dining","Contemporary Craft","Concept","8 / 11","Client Review"],
-  ["Lobby","Monumental / Natural Stone","DD","16 / 18","Coordinating"],
-  ["Executive Suite","Quiet Luxury","Shop Drawing","22 / 24","For Approval"]
-];
+import Link from "next/link";
+import {requireWorkspaceUser} from "@/lib/auth";
+import InteriorsWorkspaceClient from "@/components/InteriorsWorkspaceClient";
+import InteriorRenderEvidenceClient from "@/components/InteriorRenderEvidenceClient";
+import {emptyInteriorsWorkspace,type InteriorsWorkspaceState,type DesignProject} from "@/components/design-domain-runtime-types";
 
-export default function InteriorsPage(){
-  return <>
-    <div className="topbar"><div><div className="demo">Interiors / Design DNA</div><h1>Interiors</h1><div className="subtle">Design language, material intelligence, room packages, renders and execution drawings</div></div><button className="btn">Create Design DNA</button></div>
-    <div className="kpis">{[["Room Types","18"],["Approved Materials","64"],["Samples Pending","12"],["Shop Drawings","38"],["Design DNA Version","v03"]].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value" style={{fontSize:String(v).length>7?18:30}}>{v}</div><div className="subtle">Illustrative</div></div>)}</div>
-    <section className="panel" style={{marginTop:16}}><h3>Room / Space Packages</h3><table className="table"><thead><tr><th>Space</th><th>Design Language</th><th>Stage</th><th>Selections</th><th>Status</th></tr></thead><tbody>{rooms.map(row=><tr key={row[0]}><td>{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td><span className="badge">{row[4]}</span></td></tr>)}</tbody></table></section>
-    <div className="panel-grid"><section className="panel"><h3>Design DNA / Illustrative</h3><p className="subtle">Language: quiet luxury, contemporary craft, warm modern<br/><br/>Materials: natural stone, solid wood, textured plaster, selective metal accents<br/><br/>Lighting: layered, warm, indirect + task emphasis<br/><br/>Exclusions: synthetic marble effect, high-gloss laminates, decorative clutter</p></section><section className="panel"><h3>Material Assurance</h3><p className="subtle">Material selections can carry fire/slip ratings, manufacturer/product references, embodied-carbon indicators, cost band, sample approval and substitution history.</p></section></div>
-  </>;
+export const dynamic="force-dynamic";
+export default async function InteriorsPage({searchParams}:{searchParams:Promise<{project?:string}>}){
+ const {supabase}=await requireWorkspaceUser();const {data:projectData,error:projectError}=await supabase.rpc("list_accessible_projects");if(projectError)throw new Error(projectError.message);const projects=(projectData||[]) as DesignProject[];const params=await searchParams;const project=projects.find(p=>p.id===params.project)||projects[0];let state:InteriorsWorkspaceState=emptyInteriorsWorkspace;
+ if(project){const {data,error}=await supabase.rpc("list_interiors_workspace",{target_project_id:project.id});if(error)throw new Error(error.message);state=(data||emptyInteriorsWorkspace) as InteriorsWorkspaceState;}
+ return <><div className="topbar"><div><div className="demo">Interior Design DNA / Room / Material / Shop Drawing Control</div><h1>Interiors</h1><div className="subtle">Versioned design language, exact-revision room packages, performance-aware material decisions and coordinated execution drawings.</div></div></div><section className="panel"><h3>Project</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{projects.map(p=><Link key={p.id} href={`/app/interiors?project=${p.id}`} className={project?.id===p.id?"btn":"btn ghost"} style={{padding:"8px 11px"}}>{p.code} · {p.name}</Link>)}</div>{!project&&<div className="note">No accessible project exists yet.</div>}</section>{project&&<><InteriorsWorkspaceClient projectId={project.id} state={state}/><InteriorRenderEvidenceClient projectId={project.id} rooms={state.rooms} renders={state.renders}/></>}<div className="note"><b>Execution integrity.</b> Approved DNA is immutable/versioned; room packages pin model revision hashes; material substitutions expose cost/performance/lead-time delta; unresolved critical coordination checks block room/shop-drawing approval and issue; every registered render records the exact design/model revision and rendering engine used.</div></>;
 }

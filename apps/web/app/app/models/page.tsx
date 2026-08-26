@@ -1,15 +1,21 @@
-const models=[
-  ["Architecture Federation","Architecture","IFC 4.3","P03","Validated"],
-  ["Structure Model","Structure","IFC 4.3","P02","For Review"],
-  ["MEP Coordination","MEP","IFC 4.3","P01","Clash Review"],
-  ["Interiors Model","Interiors","IFC 4.3","P01","Work in Progress"]
-];
+import {requireWorkspaceUser} from "@/lib/auth";
+import ModelWorkspaceClient from "@/components/ModelWorkspaceClient";
+import {emptyModelWorkspace,type ModelWorkspaceState,type ProjectRow} from "@/components/lifecycle-runtime-types";
 
-export default function ModelsPage(){
-  return <>
-    <div className="topbar"><div><div className="demo">OpenBIM / Model Federation</div><h1>Models</h1><div className="subtle">IFC, IDS and BCF-first coordination with controlled proprietary adapters</div></div><button className="btn">Register Model</button></div>
-    <div className="kpis">{[["Federated Models","04"],["Clashes","38"],["Critical Clashes","00"],["IDS Checks","87%"],["Coordinate Match","100%"]].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value">{v}</div><div className="subtle">Illustrative</div></div>)}</div>
-    <section className="panel" style={{marginTop:16}}><h3>Model Register</h3><table className="table"><thead><tr><th>Model</th><th>Discipline</th><th>Schema</th><th>Revision</th><th>State</th></tr></thead><tbody>{models.map(row=><tr key={row[0]}><td>{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td><span className="badge">{row[4]}</span></td></tr>)}</tbody></table></section>
-    <div className="note"><b>Open data principle.</b> The canonical project model is not dependent on Revit, Autodesk or any single authoring vendor. Proprietary formats may be connected through authorised adapters while IFC/IDS/BCF remain first-class exchange and validation contracts.</div>
-  </>;
+export const dynamic="force-dynamic";
+
+export default async function ModelsPage({searchParams}:{searchParams:Promise<{project?:string}>}){
+ const {supabase}=await requireWorkspaceUser();
+ const {data:projectData,error:projectError}=await supabase.rpc("list_accessible_projects");
+ if(projectError)throw new Error(projectError.message);
+ const projects=(projectData||[]) as ProjectRow[];
+ const params=await searchParams;
+ const project=projects.find(p=>p.id===params.project)||projects[0];
+ let state=emptyModelWorkspace;
+ if(project){const {data,error}=await supabase.rpc("list_model_workspace",{target_project_id:project.id});if(error)throw new Error(error.message);state=(data||emptyModelWorkspace) as ModelWorkspaceState;}
+ return <>
+  <div className="topbar"><div><div className="demo">OpenBIM / IFC / IDS / BCF</div><h1>Models</h1><div className="subtle">Immutable model revisions, exact validation evidence, structured failure issues and governed approval/issue transitions.</div></div></div>
+  {project?<ModelWorkspaceClient projects={projects} projectId={project.id} state={state}/>:<div className="note">No accessible project exists yet.</div>}
+  <div className="note"><b>Open-data boundary.</b> Native authoring formats may enter through authorised adapters, but controlled model identity, validation, coordination evidence and issue authority remain vendor-neutral and hash-bound.</div>
+ </>;
 }

@@ -1,15 +1,11 @@
-const studies=[
-  ['Solar exposure','Solar','Complete','B','Orientation + façade implications'],
-  ['Daylight potential','Daylight','Draft','C','Floorplate depth / glazing basis'],
-  ['Wind context','Wind','Draft','C','Prevailing wind + outdoor comfort'],
-  ['Water balance','Water','Draft','C','Rainfall / demand / reuse opportunity'],
-  ['Flood exposure','Flood','Pending source','D','No verified flood source attached']
-];
+import Link from "next/link";
+import {requireWorkspaceUser} from "@/lib/auth";
+import {ClimateWorkspaceClient} from "@/components/PlanningIntelligenceClients";
+import {emptyClimateWorkspace,type ClimateWorkspaceState,type DesignProject} from "@/components/design-domain-runtime-types";
 
-export default function ClimatePage(){
-  return <>
-    <div className="topbar"><div><div className="demo">Climate + Environmental Intelligence</div><h1>Climate & Environment</h1><div className="subtle">Site-specific climate context and simulation evidence linked to design decisions rather than decorative sustainability claims.</div></div><button className="btn">Run Study</button></div>
-    <div className="kpis">{[['Climate Zone','Composite'],['Weather Dataset','Pending'],['Studies','05'],['Verified','01'],['Critical Unknowns','01']].map(([label,value])=><div className="kpi" key={label}><div className="label">{label}</div><div className="value">{value}</div><div className="subtle">Illustrative</div></div>)}</div>
-    <div className="panel-grid"><section className="panel"><h3>Environmental Study Register</h3><table className="table"><thead><tr><th>Study</th><th>Type</th><th>State</th><th>Confidence</th><th>Design Use</th></tr></thead><tbody>{studies.map(s=><tr key={s[0]}><td>{s[0]}</td><td>{s[1]}</td><td>{s[2]}</td><td><span className="badge">{s[3]}</span></td><td>{s[4]}</td></tr>)}</tbody></table></section><section className="panel"><h3>Evidence Before Claim</h3><p className="subtle">Quantitative daylight, energy, thermal, wind, water and carbon claims require an identified dataset/engine, immutable input basis, assumptions and result evidence. Qualitative design advice remains labelled accordingly.</p><div className="note"><b>Climate uncertainty propagates.</b> A D-confidence flood, weather or air-quality input must remain visible in downstream design and feasibility decisions until resolved.</div></section></div>
-  </>;
+export const dynamic="force-dynamic";
+export default async function ClimatePage({searchParams}:{searchParams:Promise<{project?:string}>}){
+ const {supabase}=await requireWorkspaceUser();const {data:projectData,error:projectError}=await supabase.rpc("list_accessible_projects");if(projectError)throw new Error(projectError.message);const projects=(projectData||[]) as DesignProject[];const params=await searchParams;const project=projects.find(p=>p.id===params.project)||projects[0];let state:ClimateWorkspaceState=emptyClimateWorkspace;
+ if(project){const {data,error}=await supabase.rpc("list_climate_workspace",{target_project_id:project.id});if(error)throw new Error(error.message);state=(data||emptyClimateWorkspace) as ClimateWorkspaceState;}
+ return <><div className="topbar"><div><div className="demo">Climate / Environmental Evidence</div><h1>Climate & Environment</h1><div className="subtle">Engine-identified environmental studies with immutable inputs, result hashes, evidence, confidence and independent review.</div></div></div><section className="panel"><h3>Project</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{projects.map(p=><Link key={p.id} href={`/app/climate?project=${p.id}`} className={project?.id===p.id?"btn":"btn ghost"} style={{padding:"8px 11px"}}>{p.code} · {p.name}</Link>)}</div>{!project&&<div className="note">No accessible project exists yet.</div>}</section>{project&&<ClimateWorkspaceClient projectId={project.id} state={state}/>}<div className="note"><b>Evidence before claim.</b> No daylight, energy, wind, water, flood or carbon claim is displayed as verified without a named method/engine, exact input/output hashes, evidence references and review state.</div></>;
 }

@@ -1,15 +1,22 @@
-const assets=[
-  ["AHU-L05-01","Air Handling Unit","Level 05 Plant","Commissioned","Mar 2028"],
-  ["PMP-B1-03","Fire Pump","Basement B1","Commissioned","Jan 2029"],
-  ["LIFT-T1-02","Passenger Lift","Tower 1","Handover Pending","Dec 2027"],
-  ["DG-01","Diesel Generator","Utility Yard","Commissioned","Apr 2028"]
-];
+import Link from "next/link";
+import {requireWorkspaceUser} from "@/lib/auth";
+import TwinOperationsClient from "@/components/TwinOperationsClient";
+import {emptyHandoverWorkspace,type HandoverWorkspaceState,type ProjectRow} from "@/components/lifecycle-runtime-types";
 
-export default function TwinPage(){
-  return <>
-    <div className="topbar"><div><div className="demo">Building Passport / Digital Twin</div><h1>Operate</h1><div className="subtle">Asset passports, commissioning, warranties, maintenance and post-occupancy learning</div></div><button className="btn">Register Asset</button></div>
-    <div className="kpis">{[["Asset Passports","284"],["Commissioned","231"],["Open Handover Items","18"],["Warranty Alerts","07"],["Maintenance Due","11"]].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value">{v}</div><div className="subtle">Illustrative</div></div>)}</div>
-    <section className="panel" style={{marginTop:16}}><h3>Asset Register</h3><table className="table"><thead><tr><th>Asset</th><th>Type</th><th>Location</th><th>Status</th><th>Warranty</th></tr></thead><tbody>{assets.map(row=><tr key={row[0]}><td>{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td><span className="badge">{row[3]}</span></td><td>{row[4]}</td></tr>)}</tbody></table></section>
-    <div className="note"><b>Closed learning loop.</b> Post-occupancy, maintenance, defect and performance outcomes can feed the Design Genome only through the governed learning-promotion pipeline: evidence → privacy/anonymisation → expert review → benchmarks → shadow mode → controlled production.</div>
-  </>;
+export const dynamic="force-dynamic";
+
+export default async function TwinPage({searchParams}:{searchParams:Promise<{project?:string}>}){
+ const {supabase}=await requireWorkspaceUser();
+ const {data:projectData,error:projectError}=await supabase.rpc("list_accessible_projects");
+ if(projectError)throw new Error(projectError.message);
+ const projects=(projectData||[]) as ProjectRow[];
+ const params=await searchParams;
+ const project=projects.find(p=>p.id===params.project)||projects[0];
+ let state:HandoverWorkspaceState=emptyHandoverWorkspace;
+ if(project){const {data,error}=await supabase.rpc("list_handover_workspace",{target_project_id:project.id});if(error)throw new Error(error.message);state=(data||emptyHandoverWorkspace) as HandoverWorkspaceState;}
+ return <>
+  <div className="topbar"><div><div className="demo">Handover / Building Passport / Digital Twin</div><h1>Operate</h1><div className="subtle">Mandatory handover evidence, asset and material passports, commissioning, immutable Building Passport issuance, maintenance and governed digital-twin bindings.</div></div></div>
+  <section className="panel"><h3>Project</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{projects.map(p=><Link key={p.id} href={`/app/twin?project=${p.id}`} className={project?.id===p.id?"btn":"btn ghost"} style={{padding:"8px 11px"}}>{p.code} · {p.name}</Link>)}</div>{projects.length===0&&<div className="note">No accessible project exists yet.</div>}</section>
+  {project&&<div style={{marginTop:16}}><TwinOperationsClient projectId={project.id} state={state}/></div>}
+ </>;
 }

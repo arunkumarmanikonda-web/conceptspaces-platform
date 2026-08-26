@@ -1,13 +1,15 @@
-export default function ReliabilityPage(){
-  const slos=[
-    ['Web availability','99.95%','30d','Within budget'],
-    ['Critical API success','99.90%','30d','Within budget'],
-    ['P95 application response','800 ms','7d','Within target'],
-    ['Restore readiness','RTO 120m / RPO 60m','Quarterly drill','Evidence required']
-  ];
-  return <>
-    <div className="topbar"><div><div className="demo">Platform Reliability / SRE</div><h1>Reliability & Continuity</h1><div className="subtle">Service objectives, error budgets, restore drills, feature flags and release health make production quality measurable.</div></div></div>
-    <div className="panel"><table><thead><tr><th>Objective</th><th>Target</th><th>Window</th><th>State</th></tr></thead><tbody>{slos.map(r=><tr key={r[0]}>{r.map(c=><td key={c}>{c}</td>)}</tr>)}</tbody></table></div>
-    <div className="note" style={{marginTop:18}}><b>Error-budget policy.</b> Feature velocity is reduced when reliability consumes the approved error budget. Critical assurance functions receive stricter recovery objectives.</div>
-  </>;
+import Link from "next/link";
+import {requireWorkspaceUser} from "@/lib/auth";
+import ReliabilityWorkspaceClient,{type SreState} from "@/components/ReliabilityWorkspaceClient";
+
+export const dynamic="force-dynamic";
+type Org={id:string;name:string;role_code:string};type ProjectChoice={id:string;code:string;name:string};
+export default async function ReliabilityPage({searchParams}:{searchParams:Promise<{org?:string}>}){
+ const {supabase}=await requireWorkspaceUser();const {data:orgData,error:orgError}=await supabase.rpc("list_user_organisations");if(orgError)throw new Error(orgError.message);const orgs=(orgData||[]) as Org[];const params=await searchParams;const org=orgs.find(o=>o.id===params.org)||orgs[0];let state:SreState={jobs:[],providers:[],slos:[],incidents:[],drills:[]};let projects:ProjectChoice[]=[];
+ if(org){const [{data,error},{data:projectData,error:projectError}]=await Promise.all([supabase.rpc("list_sre_workspace",{target_organisation_id:org.id}),supabase.rpc("list_accessible_projects_for_org",{target_organisation_id:org.id})]);if(error)throw new Error(error.message);if(projectError)throw new Error(projectError.message);state=data as SreState;projects=(projectData||[]) as ProjectChoice[];}
+ return <>
+  <div className="topbar"><div><div className="demo">Platform Reliability / SRE</div><h1>Reliability, Jobs & Continuity</h1><div className="subtle">Measured SLOs, immutable compute jobs, trace-linked failures, provider circuit state, incident command and evidence-tested disaster recovery.</div></div></div>
+  <section className="panel"><h3>Organisation</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{orgs.map(o=><Link key={o.id} href={`/app/reliability?org=${o.id}`} className={org?.id===o.id?"btn":"btn ghost"} style={{padding:"8px 11px"}}>{o.name}</Link>)}</div></section>
+  {org?<div style={{marginTop:16}}><ReliabilityWorkspaceClient organisationId={org.id} projects={projects} state={state}/></div>:<div className="note" style={{marginTop:18}}>No active organisation membership is available.</div>}
+ </>;
 }

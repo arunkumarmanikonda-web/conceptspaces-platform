@@ -1,14 +1,15 @@
-export default function DesignReviewPage(){
-  const reviews=[
-    ['Design Council','Architecture + programme','2 warnings','Review Required'],
-    ['Red Team','Regulation + life safety','0 critical / 1 major','Review Required'],
-    ['Constructability','Structure + MEPF','3 coordination issues','Open'],
-    ['Operability','Plant + maintenance access','1 major','Open'],
-    ['Maintainability','Interior/MEP access','0 major','Accepted']
-  ];
-  return <>
-    <div className="topbar"><div><div className="demo">AI Design Review Council / Red Team</div><h1>Adversarial Design Review</h1><div className="subtle">Independent review agents challenge assumptions, compliance, constructability, operability and maintainability before people approve critical outcomes.</div></div><button className="btn">Run Review</button></div>
-    <div className="panel"><table><thead><tr><th>Review</th><th>Focus</th><th>Findings</th><th>Status</th></tr></thead><tbody>{reviews.map(r=><tr key={r[0]}>{r.map(c=><td key={c}>{c}</td>)}</tr>)}</tbody></table></div>
-    <div className="note" style={{marginTop:18}}><b>Independence rule.</b> The agent that generated an option is not sufficient as its sole reviewer. Critical findings remain unresolved until evidence and accountable human review close them.</div>
-  </>;
+import Link from "next/link";
+import {requireWorkspaceUser} from "@/lib/auth";
+import DesignReviewRuntimeClient,{type DesignReviewWorkspace} from "@/components/DesignReviewRuntimeClient";
+
+export const dynamic="force-dynamic";
+type ProjectRow={id:string;code:string;name:string;typology:string;stage:string;criticality:string;status:string};
+const empty:DesignReviewWorkspace={intents:[],branches:[],instructions:[],objects:[]};
+export default async function DesignReviewPage({searchParams}:{searchParams:Promise<{project?:string}>}){
+ const {supabase}=await requireWorkspaceUser();const {data:projectData,error:projectError}=await supabase.rpc("list_accessible_projects");if(projectError)throw new Error(projectError.message);const projects=(projectData||[]) as ProjectRow[];const params=await searchParams;const project=projects.find(p=>p.id===params.project)||projects[0];let state=empty;if(project){const {data,error}=await supabase.rpc("list_design_review_workspace",{target_project_id:project.id});if(error)throw new Error(error.message);state=(data||empty) as DesignReviewWorkspace;}
+ return <>
+  <div className="topbar"><div><div className="demo">Architect Review / Voice-to-Design / Object Versioning</div><h1>Governed Design Review</h1><div className="subtle">Deterministic objectives, isolated scenario branches, structured instruction review and object-level revision comparison. Raw voice/text never changes the approved main branch directly.</div></div></div>
+  <section className="panel"><h3>Project</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{projects.map(p=><Link key={p.id} href={`/app/design-review?project=${p.id}`} className={project?.id===p.id?"btn":"btn ghost"} style={{padding:"8px 11px"}}>{p.code} · {p.name}</Link>)}</div>{!projects.length&&<div className="note">No accessible project exists yet.</div>}</section>
+  {project&&<div style={{marginTop:18}}><DesignReviewRuntimeClient projectId={project.id} state={state}/></div>}
+ </>;
 }

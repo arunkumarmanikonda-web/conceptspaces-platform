@@ -1,21 +1,14 @@
+import Link from "next/link";
 import {requireWorkspaceUser} from "@/lib/auth";
 import EngineeringValidationClient from "@/components/EngineeringValidationClient";
+import MepRuntimeClient,{type MepWorkspace} from "@/components/MepRuntimeClient";
 import {emptyEngineeringState,type EngineeringProject,type EngineeringWorkspaceState} from "@/components/engineering-validation-types";
 
+type Credential={id:string;discipline?:string|null;verification_status:string;valid_until?:string|null;registration_number:string};
+type ValidationWithCredentials=EngineeringWorkspaceState&{credentials?:Credential[]};
+const emptyMep:MepWorkspace={systems:[],models:[],calculations:[],loads:[],routes:[],equipment:[],packages:[],invalidations:[]};
 export const dynamic="force-dynamic";
-
-export default async function MepPage(){
- const {supabase}=await requireWorkspaceUser();
- const [{data:projectData,error:projectError},{data:validationData,error:validationError}]=await Promise.all([
-  supabase.rpc("list_accessible_projects"),
-  supabase.rpc("list_engineering_validation_workspace")
- ]);
- if(projectError)throw new Error(projectError.message);
- if(validationError)throw new Error(validationError.message);
- const projects=(projectData||[]) as EngineeringProject[];
- const state=(validationData||emptyEngineeringState) as EngineeringWorkspaceState;
- return <>
-  <div className="topbar"><div><div className="demo">MEPF + ELV + VT / Engineering Verification Runtime</div><h1>Building Systems Engineering</h1><div className="subtle">Project criteria, certified engine provenance, immutable calculation evidence and exact-hash professional review. Unsupported or insufficient evidence fails closed.</div></div></div>
-  <EngineeringValidationClient projects={projects} state={state}/>
- </>;
+export default async function MepPage({searchParams}:{searchParams:Promise<{project?:string}>}){
+ const {supabase}=await requireWorkspaceUser();const [{data:projectData,error:projectError},{data:validationData,error:validationError}]=await Promise.all([supabase.rpc("list_accessible_projects"),supabase.rpc("list_engineering_validation_workspace")]);if(projectError)throw new Error(projectError.message);if(validationError)throw new Error(validationError.message);const projects=(projectData||[]) as EngineeringProject[];const params=await searchParams;const project=projects.find(p=>p.id===params.project)||projects[0];const validation=(validationData||emptyEngineeringState) as ValidationWithCredentials;let mep=emptyMep;if(project){const {data,error}=await supabase.rpc("list_mep_workspace",{target_project_id:project.id});if(error)throw new Error(error.message);mep=(data||emptyMep) as MepWorkspace;}
+ return <><div className="topbar"><div><div className="demo">MEPF + ELV + VT / Engineering Verification Runtime</div><h1>Building Systems Engineering</h1><div className="subtle">Fail-closed routing, model/calculation reconciled equipment, versioned MEP packages, automatic model-change invalidation and professional C3/C4 release authority.</div></div></div><section className="panel"><h3>Project</h3><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{projects.map(p=><Link key={p.id} href={`/app/mep?project=${p.id}`} className={project?.id===p.id?"btn":"btn ghost"}>{p.code} · {p.name}</Link>)}</div>{!project&&<div className="note">No accessible project exists yet.</div>}</section>{project&&<MepRuntimeClient projectId={project.id} state={mep} credentials={validation.credentials||[]}/>}<details className="panel"><summary><b>Engineering calculation and professional-review runtime</b></summary><div style={{marginTop:16}}><EngineeringValidationClient projects={projects} state={validation}/></div></details><div className="note"><b>F15 release rule.</b> Routes through blocked/prohibited zones return explicit infeasibility reasons rather than geometry. Equipment must reconcile to both the approved model revision and calculation output. New model revisions invalidate dependent loads/routes/equipment without rewriting issued package history. C4 fire/electrical release requires a current designated professional credential.</div></>;
 }
