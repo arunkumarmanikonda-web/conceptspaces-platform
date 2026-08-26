@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireWorkspaceUser } from "@/lib/auth";
 
 export const dynamic="force-dynamic";
@@ -11,6 +12,28 @@ const roleOptions=[
 type Membership={id:string;organisation_id:string;role_code:string;status:string};
 type Credential={id:string;credential_type:string;issuing_body:string;registration_number:string;discipline?:string|null;verification_status:string;evidence_uri?:string|null};
 type Identity={user_id:string;email?:string|null;display_name?:string|null;phone?:string|null;memberships:Membership[];credentials:Credential[]};
+type Invitation={id:string;email:string;role_codes:string[];status:string;expires_at:string;created_at:string};
+
+async function inviteIdentity(formData:FormData){
+  "use server";
+  const {supabase,memberships}=await requireWorkspaceUser();
+  const isAdministrator=memberships.some(m=>m.status==="active"&&["super_admin","org_admin"].includes(m.role_code));
+  if(!isAdministrator) throw new Error("Administrator authority is required to invite identities.");
+  const email=String(formData.get("email")||"").trim().toLowerCase();
+  const roleCode=String(formData.get("role_code")||"").trim().toLowerCase();
+  const organisationId=String(formData.get("organisation_id")||"");
+  const availableRoles=memberships.some(m=>m.status==="active"&&m.role_code==="super_admin")?roleOptions:roleOptions.filter(role=>role!=="super_admin");
+  if(!email||!organisationId||!availableRoles.includes(roleCode)) throw new Error("A work email, organisation and permitted initial role are required.");
+  const {data,error}=await supabase.functions.invoke("invite-workspace-identity",{
+    body:{action:"invite",email,role_code:roleCode,organisation_id:organisationId}
+  });
+  if(error){
+    console.error("[auth.admin_invite] delivery failed",{message:error.message});
+    throw new Error("The identity invitation could not be sent. Check Auth email delivery configuration and try again.");
+  }
+  const outcome=(data as {status?:string}|null)?.status;
+  redirect(`/app/admin/access?invite=${outcome==="existing_identity_authorised"?"authorised":"sent"}`);
+}
 
 async function assignRole(formData:FormData){
   "use server";
@@ -65,25 +88,44 @@ async function submitOwnCredential(formData:FormData){
   revalidatePath("/app/admin/access");
 }
 
-export default async function AccessPage(){
+export default async function AccessPage({searchParams}:{searchParams:Promise<{invite?:string}>}){
   const {memberships,supabase,user}=await requireWorkspaceUser();
+  const params=await searchParams;
   const adminMembership=memberships.find(m=>m.role_code==="super_admin")||memberships.find(m=>m.role_code==="org_admin");
   if(!adminMembership){
     return <div className="panel"><h3>Identity & Authority</h3><p className="subtle">Administrator authority is required to view this workspace.</p></div>;
   }
-  const {data,error}=await supabase.rpc("list_workspace_identities",{target_organisation_id:adminMembership.organisation_id});
+  const [{data,error},{data:invitationResponse,error:invitationError}]=await Promise.all([
+    supabase.rpc("list_workspace_identities",{target_organisation_id:adminMembership.organisation_id}),
+    supabase.functions.invoke("invite-workspace-identity",{
+      body:{action:"list",organisation_id:adminMembership.organisation_id}
+    })
+  ]);
   if(error) throw new Error(`Unable to load identity directory: ${error.message}`);
+  if(invitationError) throw new Error(`Unable to load invitation directory: ${invitationError.message}`);
   const identities=(data||[]) as Identity[];
+  const invitations=((invitationResponse as {invitations?:Invitation[]}|null)?.invitations||[]);
   const activeUsers=identities.filter(i=>i.memberships.some(m=>m.status==="active")).length;
   const pendingCredentials=identities.flatMap(i=>i.credentials).filter(c=>c.verification_status==="pending").length;
   const verifiedCredentials=identities.flatMap(i=>i.credentials).filter(c=>c.verification_status==="verified").length;
   const privilegedRoles=identities.flatMap(i=>i.memberships).filter(m=>m.status==="active"&&["super_admin","org_admin"].includes(m.role_code)).length;
+  const availableRoleOptions=adminMembership.role_code==="super_admin"?roleOptions:roleOptions.filter(role=>role!=="super_admin");
 
   return <>
     <div className="topbar"><div><div className="demo">Super Admin / Live Access Control</div><h1>Identity & Authority</h1><div className="subtle">Authentication, organisational role, project authority and professional competence remain independently governed.</div></div></div>
     <div className="kpis">
       {[["Directory Identities",String(identities.length)],["Active Users",String(activeUsers)],["Pending Credentials",String(pendingCredentials)],["Verified Credentials",String(verifiedCredentials)],["Privileged Roles",String(privilegedRoles)]].map(([l,v])=><div className="kpi" key={l}><div className="label">{l}</div><div className="value">{v}</div><div className="subtle">Live database state</div></div>)}
     </div>
+
+    <section className="panel" style={{marginTop:16}}>
+      <h3>Invite Identity</h3>
+      <p className="subtle">Choose the minimum organisation role required. It becomes active only after the recipient verifies the invited email address.</p>
+      {params.invite==="sent"?<div className="note"><b>Invitation requested.</b> The recipient can complete identity verification using the secure email link.</div>:null}
+      {params.invite==="authorised"?<div className="note"><b>Existing identity authorised.</b> The approved role is active and the person can use their existing sign-in method.</div>:null}
+      <form action={inviteIdentity} className="field-grid"><input type="hidden" name="organisation_id" value={adminMembership.organisation_id}/><div className="field"><label htmlFor="invite-email">Work email</label><input id="invite-email" name="email" type="email" autoComplete="email" required placeholder="person@company.com"/></div><div className="field"><label htmlFor="invite-role">Initial role</label><select id="invite-role" name="role_code" defaultValue="project_manager">{availableRoleOptions.map(role=><option value={role} key={role}>{role.replaceAll("_"," ")}</option>)}</select></div><div className="field" style={{justifyContent:"flex-end"}}><button className="btn">Send secure invitation</button></div></form>
+    </section>
+
+    <section className="panel" style={{marginTop:16}}><h3>Invitation Register</h3><div style={{overflowX:"auto"}}><table className="table"><thead><tr><th>Email</th><th>Approved role</th><th>Status</th><th>Expires</th></tr></thead><tbody>{invitations.map(invitation=><tr key={invitation.id}><td>{invitation.email}</td><td>{invitation.role_codes.map(role=>role.replaceAll("_"," ")).join(", ")}</td><td><span className="badge">{invitation.status}</span></td><td>{new Date(invitation.expires_at).toLocaleString("en-IN")}</td></tr>)}{invitations.length===0&&<tr><td colSpan={4} className="subtle">No identity invitations have been issued.</td></tr>}</tbody></table></div></section>
 
     <div className="panel" style={{marginTop:16}}>
       <h3>Workspace Directory</h3>
@@ -92,7 +134,7 @@ export default async function AccessPage(){
           <td><b>{identity.display_name||identity.email||"Unnamed identity"}</b><div className="subtle">{identity.email||identity.user_id}</div>{identity.user_id===user.id&&<span className="badge">Current user</span>}</td>
           <td>{identity.memberships.length===0?<span className="subtle">No active authority</span>:identity.memberships.map(m=><div key={m.id} style={{marginBottom:8}}><span className="badge">{m.role_code} · {m.status}</span><form action={setMembershipStatus} style={{display:"inline",marginLeft:8}}><input type="hidden" name="membership_id" value={m.id}/><input type="hidden" name="status" value={m.status==="active"?"suspended":"active"}/><button className="btn ghost" style={{padding:"6px 9px",fontSize:9}} type="submit">{m.status==="active"?"Suspend":"Activate"}</button></form></div>)}</td>
           <td>{identity.credentials.length===0?<span className="subtle">None submitted</span>:identity.credentials.map(c=><div key={c.id} style={{marginBottom:12}}><b>{c.credential_type}</b><div className="subtle">{c.issuing_body} · {c.registration_number}{c.discipline?` · ${c.discipline}`:""}</div><span className="badge">{c.verification_status}</span>{c.verification_status==="pending"&&<div style={{marginTop:6,display:"flex",gap:6}}><form action={reviewCredential}><input type="hidden" name="credential_id" value={c.id}/><input type="hidden" name="decision" value="verified"/><button className="btn ghost" style={{padding:"6px 9px",fontSize:9}}>Verify</button></form><form action={reviewCredential}><input type="hidden" name="credential_id" value={c.id}/><input type="hidden" name="decision" value="rejected"/><button className="btn ghost" style={{padding:"6px 9px",fontSize:9}}>Reject</button></form></div>}</div>)}</td>
-          <td><form action={assignRole}><input type="hidden" name="target_user_id" value={identity.user_id}/><input type="hidden" name="organisation_id" value={adminMembership.organisation_id}/><div className="field"><select name="role_code" defaultValue="project_manager">{roleOptions.map(r=><option value={r} key={r}>{r.replaceAll("_"," ")}</option>)}</select><button className="btn" type="submit">Assign</button></div></form></td>
+          <td><form action={assignRole}><input type="hidden" name="target_user_id" value={identity.user_id}/><input type="hidden" name="organisation_id" value={adminMembership.organisation_id}/><div className="field"><select name="role_code" defaultValue="project_manager">{availableRoleOptions.map(r=><option value={r} key={r}>{r.replaceAll("_"," ")}</option>)}</select><button className="btn" type="submit">Assign</button></div></form></td>
         </tr>)}
         {identities.length===0&&<tr><td colSpan={4} className="subtle">No identities are visible in this organisation yet.</td></tr>}
       </tbody></table></div>
