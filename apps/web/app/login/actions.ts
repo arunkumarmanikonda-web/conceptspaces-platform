@@ -47,6 +47,9 @@ export async function sendMagicLink(formData:FormData){
   });
   if(error){
     console.error("[auth.magic_link] delivery failed",{status:error.status,code:error.code});
+    if(error.status===429||error.code==="over_email_send_rate_limit"){
+      redirect("/login?sent=1&cooldown=1");
+    }
     redirect("/login?error=Unable%20to%20send%20a%20secure%20link%20right%20now");
   }
   redirect("/login?sent=1");

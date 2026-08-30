@@ -18,8 +18,14 @@ test("passwordless sign-in cannot create an unauthorised first account",async()=
   assert.match(actions,/flowType:"implicit"/);
   assert.match(actions,/persistSession:false/);
   assert.match(actions,/createDeviceIndependentMagicLinkClient/);
+  assert.match(actions,/over_email_send_rate_limit/);
+  assert.match(actions,/cooldown=1/);
   const login=await read("apps/web/app/login/page.tsx");
   assert.match(login,/open the newest link in any browser/);
+  assert.match(login,/MagicLinkSubmitButton/);
+  const submitButton=await read("apps/web/app/login/MagicLinkSubmitButton.tsx");
+  assert.match(submitButton,/useFormStatus/);
+  assert.match(submitButton,/disabled=\{pending\}/);
   const migration=await read("supabase/migrations/0124_secure_invite_auth_bootstrap.sql");
   assert.doesNotMatch(migration,/not exists\s*\(select 1 from core\.memberships\)/i);
   assert.match(migration,/first-user bootstrap is forbidden/i);
