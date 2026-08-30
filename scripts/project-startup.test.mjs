@@ -7,6 +7,7 @@ const read=(path)=>readFile(new URL(`../${path}`,import.meta.url),"utf8");
 
 test("project intake startup is idempotent, governed and connected to the first run",async()=>{
   const migration=await read("supabase/migrations/0134_project_startup_orchestration.sql");
+  const workerPrivileges=await read("supabase/migrations/0135_service_worker_runtime_privileges.sql");
   const startup=await read("apps/web/lib/project-startup.ts");
   const route=await read("apps/web/app/api/projects/[id]/bootstrap/route.ts");
   const workspace=await read("apps/web/app/app/projects/[id]/page.tsx");
@@ -25,6 +26,11 @@ test("project intake startup is idempotent, governed and connected to the first 
   assert.doesNotMatch(migration,/\bgrant all\b/i);
   assert.match(startup,/geometry-evaluate/);
   assert.match(startup,/compiler-run/);
+  assert.match(startup,/bootstrap_project_main_branch/);
+  assert.match(workerPrivileges,/grant usage on schema configuration, cost to authenticated/);
+  assert.match(workerPrivileges,/grant select on project\.projects, project\.project_members to service_role/);
+  assert.match(workerPrivileges,/grant select, insert on aec\.site_geometries to service_role/);
+  assert.doesNotMatch(workerPrivileges,/\bgrant all\b/i);
   assert.match(route,/initialiseProjectStartup/);
   assert.match(workspace,/What happens next/);
   assert.match(workspace,/ProjectStartupClient/);

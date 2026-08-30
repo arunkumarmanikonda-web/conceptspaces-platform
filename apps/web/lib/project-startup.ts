@@ -26,6 +26,8 @@ export async function initialiseProjectStartup(supabase:SupabaseClient,projectId
   if(baselineError) throw new Error(baselineError.message);
   const baseline=(baselineData&&typeof baselineData==="object"?baselineData:null) as Record<string,unknown>|null;
   const parcel=baseline?.geometry_parcel as GeometryParcel|undefined|null;
+  const {error:branchError}=await supabase.rpc("bootstrap_project_main_branch",{target_project_id:projectId});
+  if(branchError) issues.push(message(branchError,"Project branch initialization failed."));
   let geometry:Record<string,unknown>|null=null;
   if(parcel){
     const {data,error}=await supabase.functions.invoke("geometry-evaluate",{body:{project_id:projectId,parcel}});
