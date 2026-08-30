@@ -86,6 +86,7 @@ test("authenticated command-centre reads have least-privilege table access",asyn
 test("authorised project intake supports insert returning without bypassing RLS",async()=>{
   const migration=await read("supabase/migrations/0128_project_creation_returning_rls.sql");
   const scopeGrant=await read("supabase/migrations/0129_engagement_scope_selection_read_privilege.sql");
+  const dependencyGrant=await read("supabase/migrations/0130_project_intake_scope_dependency_privileges.sql");
   const route=await read("apps/web/app/api/projects/intake/route.ts");
   assert.match(migration,/create policy projects_read on project\.projects/);
   assert.match(migration,/project\.can_access_project\(id\)/);
@@ -97,11 +98,37 @@ test("authorised project intake supports insert returning without bypassing RLS"
   assert.doesNotMatch(migration,/\bgrant all\b/i);
   assert.doesNotMatch(migration,/\bto anon\b/i);
   assert.match(scopeGrant,/grant select on engagement\.scope_selections to authenticated/);
+  assert.match(dependencyGrant,/grant select on engagement\.scope_catalogue/);
+  assert.match(dependencyGrant,/engagement\.scope_dependency_overrides/);
+  assert.doesNotMatch(dependencyGrant,/\bgrant all\b/i);
+  assert.doesNotMatch(dependencyGrant,/\bto anon\b/i);
   assert.doesNotMatch(scopeGrant,/\bgrant all\b/i);
   assert.doesNotMatch(scopeGrant,/\bto anon\b/i);
   assert.match(route,/\[projects\.intake\] persistence failed/);
   assert.doesNotMatch(route,/detail:error\.message/);
   assert.match(route,/status:500/);
+});
+
+test("project intake records legal parcels, assembled geometry and an explicit brief",async()=>{
+  const wizard=await read("apps/web/components/ProjectIntakeWizardLive.tsx");
+  const route=await read("apps/web/app/api/projects/intake/route.ts");
+  const model=await read("apps/web/lib/project-intake.ts");
+  const migration=await read("supabase/migrations/0131_multi_parcel_project_intake.sql");
+  assert.match(wizard,/Adjacent plots used as one site/);
+  assert.match(wizard,/Add plot/);
+  assert.match(wizard,/Combined assembled-site boundary/);
+  assert.match(wizard,/Project brief — what do you want designed or built/);
+  assert.match(wizard,/localStorage\.setItem/);
+  assert.match(model,/sqyd:0\.83612736/);
+  assert.match(route,/normaliseParcels/);
+  assert.match(route,/project_brief_required/);
+  assert.match(route,/parcelGeometry/);
+  assert.match(migration,/'site\.parcels'/);
+  assert.match(migration,/'plot\.parcel_geometry'/);
+  assert.match(migration,/'plot\.assembled_geometry'/);
+  assert.match(migration,/'programme\.client_brief'/);
+  assert.match(migration,/security invoker/i);
+  assert.doesNotMatch(migration,/\bgrant all\b/i);
 });
 
 test("connected engagement readiness no longer advertises a preview-only platform",async()=>{

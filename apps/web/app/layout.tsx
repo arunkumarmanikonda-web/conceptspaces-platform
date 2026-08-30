@@ -1,6 +1,7 @@
 import "./globals.css";
 import "./brand.css";
 import "./accessibility.css";
+import "./project-intake.css";
 import type {Metadata} from "next";
 
 export const metadata:Metadata={
