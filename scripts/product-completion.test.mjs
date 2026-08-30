@@ -15,6 +15,11 @@ test("the public journey exposes real sign-in and access routes",async()=>{
 test("passwordless sign-in cannot create an unauthorised first account",async()=>{
   const actions=await read("apps/web/app/login/actions.ts");
   assert.match(actions,/shouldCreateUser:false/);
+  assert.match(actions,/flowType:"implicit"/);
+  assert.match(actions,/persistSession:false/);
+  assert.match(actions,/createDeviceIndependentMagicLinkClient/);
+  const login=await read("apps/web/app/login/page.tsx");
+  assert.match(login,/open the newest link in any browser/);
   const migration=await read("supabase/migrations/0124_secure_invite_auth_bootstrap.sql");
   assert.doesNotMatch(migration,/not exists\s*\(select 1 from core\.memberships\)/i);
   assert.match(migration,/first-user bootstrap is forbidden/i);

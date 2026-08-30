@@ -15,7 +15,7 @@ export default async function LoginPage({searchParams}:{searchParams:Promise<{er
         <div className="demo">Supabase Auth / Connected</div><h2 style={{fontSize:32,fontWeight:450}}>Sign in</h2>
         <p className="subtle">Use the password for your invited account or request a secure sign-in link. Authentication verifies identity; organisation and project authority are assigned separately.</p>
         {params.error?<div className="note" style={{borderColor:'#D97B7B'}}><b>Sign-in failed.</b> {params.error}</div>:null}
-        {params.sent?<div className="note"><b>Secure link sent.</b> Check your email and complete sign-in in this browser.</div>:null}
+        {params.sent?<div className="note"><b>Secure link sent.</b> Check your email and open the newest link in any browser.</div>:null}
         <form action={signInWithPassword}>
           <div className="field" style={{marginTop:26}}><label htmlFor="password-email">Email</label><input id="password-email" name="email" type="email" autoComplete="email" required placeholder="you@company.com"/></div>
           <div className="field" style={{marginTop:16}}><label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete="current-password" required placeholder="••••••••••••"/></div>

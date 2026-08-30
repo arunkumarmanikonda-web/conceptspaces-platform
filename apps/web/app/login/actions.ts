@@ -1,8 +1,25 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { applicationOrigin } from "@/lib/application-origin";
+import { supabasePublicConfig } from "@/lib/public-runtime-config";
+
+function createDeviceIndependentMagicLinkClient(){
+  return createSupabaseClient(
+    supabasePublicConfig.url,
+    supabasePublicConfig.publishableKey,
+    {
+      auth:{
+        flowType:"implicit",
+        autoRefreshToken:false,
+        persistSession:false,
+        detectSessionInUrl:false
+      }
+    }
+  );
+}
 
 export async function signInWithPassword(formData:FormData){
   const email=String(formData.get("email")||"").trim();
@@ -18,7 +35,12 @@ export async function sendMagicLink(formData:FormData){
   const email=String(formData.get("email")||"").trim();
   if(!email) redirect("/login?error=Email%20is%20required");
   const origin=await applicationOrigin();
-  const supabase=await createServerSupabaseClient();
+  // A PKCE link depends on the browser that requested it retaining a code
+  // verifier. Email is commonly opened on another browser or device, so this
+  // one-time link intentionally uses the implicit flow. The callback forwards
+  // its URL fragment to /auth/complete, which immediately removes the tokens
+  // from the address bar before persisting the session.
+  const supabase=createDeviceIndependentMagicLinkClient();
   const { error }=await supabase.auth.signInWithOtp({
     email,
     options:{ emailRedirectTo:`${origin}/auth/callback?next=/app`, shouldCreateUser:false }
