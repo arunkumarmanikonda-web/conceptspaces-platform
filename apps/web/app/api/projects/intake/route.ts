@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { areaUnits, calculateCombinedArea, isValidGstin, normaliseGstin, normaliseParcels, type AreaUnit } from "@/lib/project-intake";
+import { initialiseProjectStartup } from "@/lib/project-startup";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 const allowedModules=new Set(["FEAS","ARCH","INT","STR","MEPF","BIM","BOQ","PROC","PMC","TWIN"]);
@@ -93,5 +94,14 @@ export async function POST(request:Request){
     console.error("[projects.intake] persistence failed",{reference,code:error.code,details:error.details,hint:error.hint});
     return NextResponse.json({error:"intake_persistence_failed",detail:`The governed project could not be created. Your draft is saved in this browser. Reference: ${reference}`},{status:500});
   }
-  return NextResponse.json({ok:true,...(data as Record<string,unknown>)});
+  const project=(data&&typeof data==="object"?data:{}) as Record<string,unknown>;
+  const projectId=String(project.project_id||"");
+  let startup=null;
+  if(projectId){
+    try{ startup=await initialiseProjectStartup(supabase,projectId); }
+    catch(startupError){
+      console.error("[projects.intake] startup deferred",{projectId,error:startupError instanceof Error?startupError.message:String(startupError)});
+    }
+  }
+  return NextResponse.json({ok:true,...project,startup});
 }

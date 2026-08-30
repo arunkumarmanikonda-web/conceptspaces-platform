@@ -12,7 +12,7 @@ export default async function Projects(){
   return <>
     <div className="topbar"><div><div className="demo">Live Supabase Workspace</div><h1>Projects</h1><div className="subtle">Governed project records visible through your organisation/project authority.</div></div><Link className="btn" href="/app/projects/new">Create Project</Link></div>
     <div className="panel"><h3>Portfolio</h3>
-      {projects.length?<table className="table"><thead><tr><th>Project</th><th>Type</th><th>Stage</th><th>Criticality</th><th>Status</th></tr></thead><tbody>{projects.map(project=><tr key={project.id}><td><b>{project.code}</b> / {project.name}</td><td>{project.typology}</td><td>{project.stage}</td><td><span className="badge">{project.criticality}</span></td><td>{project.status}</td></tr>)}</tbody></table>:<div className="note"><b>No governed projects yet.</b> Create the first project through the guided intake. Once submitted it will persist here immediately.</div>}
+      {projects.length?<table className="table"><thead><tr><th>Project</th><th>Type</th><th>Stage</th><th>Criticality</th><th>Status</th><th></th></tr></thead><tbody>{projects.map(project=><tr key={project.id}><td><Link href={`/app/projects/${project.id}`}><b>{project.code}</b> / {project.name}</Link></td><td>{project.typology}</td><td>{project.stage}</td><td><span className="badge">{project.criticality}</span></td><td>{project.status}</td><td><Link className="btn ghost" href={`/app/projects/${project.id}`}>Open workspace</Link></td></tr>)}</tbody></table>:<div className="note"><b>No governed projects yet.</b> Create the first project through the guided intake. Once submitted it will persist here immediately.</div>}
     </div>
   </>;
 }

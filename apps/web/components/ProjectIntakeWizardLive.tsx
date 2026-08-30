@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { areaUnits, calculateCombinedArea, createParcel, dimensionUnits, formatMeasurement, isValidGstin, normaliseGstin, type AreaUnit, type PlotParcel } from "@/lib/project-intake";
 
 const steps=["Client","Parcels","Geometry","Regulations","Use","Requirements","Interiors","Scope","Review"];
 const modules=["FEAS","ARCH","INT","STR","MEPF","BIM","BOQ","PROC","PMC","TWIN"];
 const draftKey="conceptspaces.project-intake.v2";
 type FormState=Record<string,string>;
-type SaveState={status:"idle"|"saving"|"saved"|"error";message?:string;projectCode?:string};
+type SaveState={status:"idle"|"saving"|"saved"|"error";message?:string;projectCode?:string;projectId?:string};
 type Draft={form:FormState;parcels:PlotParcel[];scope:string[];step:number};
 
 const initial:FormState={
@@ -26,6 +27,7 @@ const arrangementOptions=[
 ];
 
 export function ProjectIntakeWizardLive(){
+  const router=useRouter();
   const [step,setStep]=useState(0);
   const [form,setForm]=useState<FormState>(initial);
   const [parcels,setParcels]=useState<PlotParcel[]>([createParcel(1)]);
@@ -103,7 +105,9 @@ export function ProjectIntakeWizardLive(){
     const data=await response.json().catch(()=>({}));
     if(!response.ok){ setState({status:"error",message:data.detail||data.error||"Unable to persist intake"}); return; }
     window.localStorage.removeItem(draftKey);
-    setState({status:"saved",projectCode:String(data.project_code||"")});
+    const projectId=String(data.project_id||"");
+    setState({status:"saved",projectCode:String(data.project_code||""),projectId});
+    if(projectId) router.push(`/app/projects/${projectId}`);
   };
 
   return <div className="wizard">
@@ -141,7 +145,7 @@ export function ProjectIntakeWizardLive(){
 
       {step===7&&<div className="grid-3 scope-grid">{modules.map(code=><button type="button" className="card" key={code} onClick={()=>toggle(code)} aria-pressed={scope.includes(code)} style={{textAlign:"left",cursor:"pointer",outline:scope.includes(code)?"2px solid #3D6DF0":"none"}}><div className="eyebrow">{code}</div><h3>{scope.includes(code)?"Included":"Available"}</h3><p>{scope.includes(code)?"Part of this engagement scope":"Click to add to scope"}</p></button>)}</div>}
 
-      {step===8&&<><div className="panel-grid review-grid"><div className="panel"><h3>Project and requirements</h3><ReviewRow label="Client" value={form.clientName||"Required"}/><ReviewRow label="Billing entity" value={form.billingLegalName||form.organisation||form.clientName||"Required"}/><ReviewRow label="GST registration" value={form.gstRegistered==="yes"?`Registered · ${normaliseGstin(form.gstin)||"GSTIN required"}`:form.gstRegistered==="no"?"Not registered":"Required"}/><ReviewRow label="Billing state / UT" value={form.billingState||"Not declared"}/><ReviewRow label="Project" value={form.projectName||"Required"}/><ReviewRow label="Typology" value={[form.typology,form.subTypology].filter(Boolean).join(" — ")||"Required"}/><ReviewRow label="Project brief" value={form.projectBrief||"Required"}/><ReviewRow label="Priorities" value={form.priorities||"Not declared"}/><ReviewRow label="Scope" value={scope.join(" · ")||"None"}/></div><div className="panel"><h3>Site assembly</h3><ReviewRow label="Composition" value={arrangementLabel(form.siteArrangement)}/><ReviewRow label="Parcel count" value={String(parcels.length)}/>{parcels.map((parcel,index)=><ReviewRow key={parcel.id} label={parcel.label||`Plot ${index+1}`} value={`${parcel.area||"Area required"} ${parcel.areaUnit}; front ${parcel.front||"—"}, rear ${parcel.rear||"—"}, left ${parcel.left||"—"}, right ${parcel.right||"—"} ${parcel.dimensionUnit}`}/>)}<ReviewRow label="Calculated total" value={combinedArea===null?"Incomplete":`${formatMeasurement(combinedArea)} ${combinedUnit}`}/><ReviewRow label="Combined boundary" value={`front ${form.combinedFront||"—"}, rear ${form.combinedRear||"—"}, left ${form.combinedLeft||"—"}, right ${form.combinedRight||"—"} ${form.combinedDimensionUnit}`}/></div></div><div className="note"><b>Release posture.</b> Parcel areas, dimensions, FAR, setbacks and height restrictions remain unverified until their source evidence is accepted. Submission records declarations without promoting assumptions into verified facts.</div>{state.status==="saved"&&<div className="note"><b>Project created.</b> {state.projectCode||"Governed record saved"}. <Link href="/app/projects">Open portfolio</Link></div>}</>}
+      {step===8&&<><div className="panel-grid review-grid"><div className="panel"><h3>Project and requirements</h3><ReviewRow label="Client" value={form.clientName||"Required"}/><ReviewRow label="Billing entity" value={form.billingLegalName||form.organisation||form.clientName||"Required"}/><ReviewRow label="GST registration" value={form.gstRegistered==="yes"?`Registered · ${normaliseGstin(form.gstin)||"GSTIN required"}`:form.gstRegistered==="no"?"Not registered":"Required"}/><ReviewRow label="Billing state / UT" value={form.billingState||"Not declared"}/><ReviewRow label="Project" value={form.projectName||"Required"}/><ReviewRow label="Typology" value={[form.typology,form.subTypology].filter(Boolean).join(" — ")||"Required"}/><ReviewRow label="Project brief" value={form.projectBrief||"Required"}/><ReviewRow label="Priorities" value={form.priorities||"Not declared"}/><ReviewRow label="Scope" value={scope.join(" · ")||"None"}/></div><div className="panel"><h3>Site assembly</h3><ReviewRow label="Composition" value={arrangementLabel(form.siteArrangement)}/><ReviewRow label="Parcel count" value={String(parcels.length)}/>{parcels.map((parcel,index)=><ReviewRow key={parcel.id} label={parcel.label||`Plot ${index+1}`} value={`${parcel.area||"Area required"} ${parcel.areaUnit}; front ${parcel.front||"—"}, rear ${parcel.rear||"—"}, left ${parcel.left||"—"}, right ${parcel.right||"—"} ${parcel.dimensionUnit}`}/>)}<ReviewRow label="Calculated total" value={combinedArea===null?"Incomplete":`${formatMeasurement(combinedArea)} ${combinedUnit}`}/><ReviewRow label="Combined boundary" value={`front ${form.combinedFront||"—"}, rear ${form.combinedRear||"—"}, left ${form.combinedLeft||"—"}, right ${form.combinedRight||"—"} ${form.combinedDimensionUnit}`}/></div></div><div className="note"><b>Release posture.</b> Parcel areas, dimensions, FAR, setbacks and height restrictions remain unverified until their source evidence is accepted. Submission records declarations without promoting assumptions into verified facts.</div>{state.status==="saved"&&<div className="note"><b>Project created.</b> {state.projectCode||"Governed record saved"}. Preparing the first governed baseline… {state.projectId?<Link href={`/app/projects/${state.projectId}`}>Open project workspace</Link>:<Link href="/app/projects">Open portfolio</Link>}</div>}</>}
 
       <div className="wizard-actions"><button className="btn ghost" type="button" disabled={step===0||state.status==="saving"} onClick={()=>{setState({status:"idle"});setStep(current=>Math.max(0,current-1));}}>Back</button>{step<8?<button className="btn" type="button" onClick={goNext}>Continue</button>:<button className="btn" type="button" disabled={state.status==="saving"||state.status==="saved"} onClick={submit}>{state.status==="saving"?"Saving…":"Create governed project"}</button>}</div>
     </section>
