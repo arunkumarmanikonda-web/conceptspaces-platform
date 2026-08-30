@@ -141,6 +141,10 @@ test("project intake captures a governed client billing identity",async()=>{
   assert.match(wizard,/Legal billing name/);
   assert.match(wizard,/Billing state \/ UT/);
   assert.match(wizard,/Registry verification is still required/);
+  assert.match(wizard,/onValueChange\(event\.target\.value\)/);
+  assert.match(wizard,/onValueChange=\{setGstRegistration\}/);
+  assert.match(wizard,/onValueChange=\{setArrangement\}/);
+  assert.match(wizard,/restored\.gstRegistered=""/);
   assert.match(model,/gstinPattern/);
   assert.match(route,/gst_registration_status_required/);
   assert.match(route,/registered_client_billing_identity_required/);
