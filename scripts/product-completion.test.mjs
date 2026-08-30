@@ -85,6 +85,7 @@ test("authenticated command-centre reads have least-privilege table access",asyn
 
 test("authorised project intake supports insert returning without bypassing RLS",async()=>{
   const migration=await read("supabase/migrations/0128_project_creation_returning_rls.sql");
+  const scopeGrant=await read("supabase/migrations/0129_engagement_scope_selection_read_privilege.sql");
   const route=await read("apps/web/app/api/projects/intake/route.ts");
   assert.match(migration,/create policy projects_read on project\.projects/);
   assert.match(migration,/project\.can_access_project\(id\)/);
@@ -95,6 +96,9 @@ test("authorised project intake supports insert returning without bypassing RLS"
   assert.doesNotMatch(migration,/security definer/i);
   assert.doesNotMatch(migration,/\bgrant all\b/i);
   assert.doesNotMatch(migration,/\bto anon\b/i);
+  assert.match(scopeGrant,/grant select on engagement\.scope_selections to authenticated/);
+  assert.doesNotMatch(scopeGrant,/\bgrant all\b/i);
+  assert.doesNotMatch(scopeGrant,/\bto anon\b/i);
   assert.match(route,/\[projects\.intake\] persistence failed/);
   assert.doesNotMatch(route,/detail:error\.message/);
   assert.match(route,/status:500/);
