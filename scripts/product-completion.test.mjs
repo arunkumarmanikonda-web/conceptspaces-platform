@@ -66,6 +66,17 @@ test("server auth refresh, account recovery and sign-out are release-gated",asyn
   assert.match(sidebar,/action=\{signOut\}/);
 });
 
+test("authenticated command-centre reads have least-privilege table access",async()=>{
+  const migration=await read("supabase/migrations/0127_authenticated_dashboard_read_privileges.sql");
+  assert.match(migration,/grant select on core\.organisations to authenticated/);
+  assert.match(migration,/grant select on operations\.risks to authenticated/);
+  assert.match(migration,/create policy risks_governed_read on operations\.risks/);
+  assert.match(migration,/project\.can_access_project\(project_id\)/);
+  assert.match(migration,/core\.is_internal_org_member\(organisation_id\)/);
+  assert.doesNotMatch(migration,/\bgrant all\b/i);
+  assert.doesNotMatch(migration,/\bto anon\b/i);
+});
+
 test("connected engagement readiness no longer advertises a preview-only platform",async()=>{
   const readiness=await read("apps/web/app/api/engagement/readiness/route.ts");
   assert.doesNotMatch(readiness,/preview-no-persistence/);
