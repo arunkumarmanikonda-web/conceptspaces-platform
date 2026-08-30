@@ -54,8 +54,10 @@ test("server auth refresh, account recovery and sign-out are release-gated",asyn
   assert.match(proxy,/supabase\.auth\.getUser\(\)/);
   assert.match(callback,/exchangeCodeForSession/);
   assert.match(callback,/verifyOtp/);
+  assert.match(callback,/\/auth\/complete/);
   assert.match(inviteCompletion,/auth\.setSession/);
   assert.match(inviteCompletion,/history\.replaceState/);
+  assert.match(inviteCompletion,/window\.location\.replace\(next\)/);
   assert.match(sidebar,/action=\{signOut\}/);
 });
 

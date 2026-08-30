@@ -5,6 +5,10 @@ import {useEffect,useState} from "react";
 import {Brand} from "@/components/Brand";
 import {getBrowserSupabaseClient} from "@/lib/supabase-browser";
 
+function safeNextPath(value:string|null){
+  return value?.startsWith("/")&&!value.startsWith("//")?value:"/app";
+}
+
 export default function CompleteAuthenticationPage(){
   const [message,setMessage]=useState("Completing secure sign-in…");
   const [failed,setFailed]=useState(false);
@@ -12,12 +16,14 @@ export default function CompleteAuthenticationPage(){
   useEffect(()=>{
     let active=true;
     async function complete(){
-      const hash=new URLSearchParams(window.location.hash.slice(1));
+      const currentUrl=new URL(window.location.href);
+      const next=safeNextPath(currentUrl.searchParams.get("next"));
+      const hash=new URLSearchParams(currentUrl.hash.slice(1));
       const accessToken=hash.get("access_token");
       const refreshToken=hash.get("refresh_token");
       window.history.replaceState({},"","/auth/complete");
       if(!accessToken||!refreshToken){
-        if(active){setFailed(true);setMessage("This invitation link is invalid or has expired.");}
+        if(active){setFailed(true);setMessage("This sign-in link is invalid or has expired.");}
         return;
       }
       const {error}=await getBrowserSupabaseClient().auth.setSession({
@@ -26,11 +32,11 @@ export default function CompleteAuthenticationPage(){
       if(error){
         if(active){
           setFailed(true);
-          setMessage("The invitation could not be verified. Request a new invitation from your administrator.");
+          setMessage("The sign-in link could not be verified. Request a new secure link and try again.");
         }
         return;
       }
-      window.location.replace("/app");
+      window.location.replace(next);
     }
     void complete();
     return()=>{active=false;};

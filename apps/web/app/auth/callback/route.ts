@@ -20,7 +20,12 @@ export async function GET(request:Request){
     const {error}=await supabase.auth.verifyOtp({token_hash:tokenHash,type});
     if(error) return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error.message)}`,url.origin));
   }else{
-    return NextResponse.redirect(new URL("/login?error=The%20authentication%20link%20is%20invalid%20or%20expired",url.origin));
+    // Implicit-flow links return the session in the URL fragment. Fragments are
+    // not sent to Route Handlers, so hand the browser off to the client-side
+    // completion page. The browser preserves the fragment across this redirect.
+    const completionUrl=new URL("/auth/complete",url.origin);
+    completionUrl.searchParams.set("next",next);
+    return NextResponse.redirect(completionUrl);
   }
   return NextResponse.redirect(new URL(next,url.origin));
 }
