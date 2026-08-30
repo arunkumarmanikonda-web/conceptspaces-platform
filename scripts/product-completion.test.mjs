@@ -131,6 +131,32 @@ test("project intake records legal parcels, assembled geometry and an explicit b
   assert.doesNotMatch(migration,/\bgrant all\b/i);
 });
 
+test("project intake captures a governed client billing identity",async()=>{
+  const wizard=await read("apps/web/components/ProjectIntakeWizardLive.tsx");
+  const route=await read("apps/web/app/api/projects/intake/route.ts");
+  const model=await read("apps/web/lib/project-intake.ts");
+  const migration=await read("supabase/migrations/0132_client_billing_identity.sql");
+  const indexes=await read("supabase/migrations/0133_client_billing_identity_indexes.sql");
+  assert.match(wizard,/GST registered\?/);
+  assert.match(wizard,/Legal billing name/);
+  assert.match(wizard,/Billing state \/ UT/);
+  assert.match(wizard,/Registry verification is still required/);
+  assert.match(model,/gstinPattern/);
+  assert.match(route,/gst_registration_status_required/);
+  assert.match(route,/registered_client_billing_identity_required/);
+  assert.match(route,/valid_gstin_required/);
+  assert.match(migration,/create table public\.client_accounts/);
+  assert.match(migration,/client_account_id/);
+  assert.match(migration,/gst_registered/);
+  assert.match(migration,/gst_verification_status/);
+  assert.match(indexes,/client_accounts_created_by_idx/);
+  assert.match(indexes,/projects_org_client_account_idx/);
+  assert.match(migration,/security invoker/i);
+  assert.doesNotMatch(migration,/security definer/i);
+  assert.doesNotMatch(migration,/\bgrant all\b/i);
+  assert.doesNotMatch(migration,/\bto anon\b/i);
+});
+
 test("connected engagement readiness no longer advertises a preview-only platform",async()=>{
   const readiness=await read("apps/web/app/api/engagement/readiness/route.ts");
   assert.doesNotMatch(readiness,/preview-no-persistence/);

@@ -4,6 +4,8 @@ export const dimensionUnits=["ft","m","yd"] as const;
 export type AreaUnit=(typeof areaUnits)[number];
 export type DimensionUnit=(typeof dimensionUnits)[number];
 
+const gstinPattern=/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
 export type PlotParcel={
   id:string;
   label:string;
@@ -44,6 +46,14 @@ export function calculateCombinedArea(parcels:PlotParcel[],unit:AreaUnit):number
 
 export function formatMeasurement(value:number):string{
   return new Intl.NumberFormat("en-IN",{maximumFractionDigits:2}).format(value);
+}
+
+export function normaliseGstin(value:unknown):string{
+  return typeof value==="string"?value.toUpperCase().replace(/[\s-]+/g,""):"";
+}
+
+export function isValidGstin(value:unknown):boolean{
+  return gstinPattern.test(normaliseGstin(value));
 }
 
 function cleanText(value:unknown,maxLength:number):string{

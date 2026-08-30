@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { areaUnits, calculateCombinedArea, normaliseParcels, type AreaUnit } from "@/lib/project-intake";
+import { areaUnits, calculateCombinedArea, isValidGstin, normaliseGstin, normaliseParcels, type AreaUnit } from "@/lib/project-intake";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 const allowedModules=new Set(["FEAS","ARCH","INT","STR","MEPF","BIM","BOQ","PROC","PMC","TWIN"]);
@@ -26,8 +26,13 @@ export async function POST(request:Request){
   const arrangement=allowedArrangements.has(form.siteArrangement)?form.siteArrangement:"single";
   const combinedAreaUnit=(areaUnits.includes(form.combinedAreaUnit as AreaUnit)?form.combinedAreaUnit:"sqyd") as AreaUnit;
   const combinedArea=calculateCombinedArea(parcels,combinedAreaUnit);
+  const gstRegistered=form.gstRegistered==="yes";
+  const gstin=normaliseGstin(form.gstin);
 
   if(!form.projectName||!form.clientName||!form.typology) return NextResponse.json({error:"project_name_client_and_typology_required"},{status:422});
+  if(!["yes","no"].includes(form.gstRegistered)) return NextResponse.json({error:"gst_registration_status_required"},{status:422});
+  if(gstRegistered&&(!form.billingLegalName||!form.billingAddress||!form.billingState)) return NextResponse.json({error:"registered_client_billing_identity_required"},{status:422});
+  if(gstRegistered&&!isValidGstin(gstin)) return NextResponse.json({error:"valid_gstin_required"},{status:422});
   if(!form.address) return NextResponse.json({error:"site_address_required"},{status:422});
   if(!parcels.length||parcels.some(parcel=>!parcel.label||!Number.isFinite(Number(parcel.area))||Number(parcel.area)<=0)||combinedArea===null) return NextResponse.json({error:"valid_parcel_areas_required"},{status:422});
   if(!form.projectBrief) return NextResponse.json({error:"project_brief_required"},{status:422});
@@ -36,7 +41,17 @@ export async function POST(request:Request){
   const parcelGeometry=parcels.map(parcel=>({id:parcel.id,label:parcel.label,front:parcel.front||null,rear:parcel.rear||null,left:parcel.left||null,right:parcel.right||null,dimensionUnit:parcel.dimensionUnit,sharedBoundary:parcel.sharedBoundary||null}));
   const inputPayload={
     project:{name:form.projectName,typology:form.typology,subTypology:form.subTypology||null},
-    client:present({name:form.clientName,email:form.email||null,organisation:form.organisation||null,phone:form.phone||null}),
+    client:{
+      ...present({name:form.clientName,email:form.email||null,organisation:form.organisation||null,phone:form.phone||null}),
+      billing:{
+        legalName:form.billingLegalName||form.organisation||form.clientName,
+        gstRegistered,
+        gstin:gstRegistered?gstin:null,
+        address:form.billingAddress||null,
+        state:form.billingState||null,
+        verificationStatus:gstRegistered?"client_declared":"not_applicable"
+      }
+    },
     site:{
       ...present({address:form.address,latitude:form.latitude||null,longitude:form.longitude||null}),
       arrangement,
