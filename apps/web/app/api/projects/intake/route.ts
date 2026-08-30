@@ -25,6 +25,9 @@ export async function POST(request:Request){
   };
 
   const { data,error }=await supabase.rpc("submit_project_intake",{input_payload:inputPayload,scope_modules:scope});
-  if(error) return NextResponse.json({error:"intake_persistence_failed",detail:error.message},{status:400});
+  if(error){
+    console.error("[projects.intake] persistence failed",{code:error.code,details:error.details,hint:error.hint});
+    return NextResponse.json({error:"intake_persistence_failed",detail:"The governed project could not be created. Your intake remains on this page; please retry."},{status:500});
+  }
   return NextResponse.json({ok:true,...(data as Record<string,unknown>)});
 }

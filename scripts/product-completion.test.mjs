@@ -83,6 +83,23 @@ test("authenticated command-centre reads have least-privilege table access",asyn
   assert.doesNotMatch(migration,/\bto anon\b/i);
 });
 
+test("authorised project intake supports insert returning without bypassing RLS",async()=>{
+  const migration=await read("supabase/migrations/0128_project_creation_returning_rls.sql");
+  const route=await read("apps/web/app/api/projects/intake/route.ts");
+  assert.match(migration,/create policy projects_read on project\.projects/);
+  assert.match(migration,/project\.can_access_project\(id\)/);
+  assert.match(migration,/created_by = \(select auth\.uid\(\)\)/);
+  assert.match(migration,/core\.has_org_role/);
+  assert.match(migration,/project_manager/);
+  assert.match(migration,/create policy projects_insert on project\.projects/);
+  assert.doesNotMatch(migration,/security definer/i);
+  assert.doesNotMatch(migration,/\bgrant all\b/i);
+  assert.doesNotMatch(migration,/\bto anon\b/i);
+  assert.match(route,/\[projects\.intake\] persistence failed/);
+  assert.doesNotMatch(route,/detail:error\.message/);
+  assert.match(route,/status:500/);
+});
+
 test("connected engagement readiness no longer advertises a preview-only platform",async()=>{
   const readiness=await read("apps/web/app/api/engagement/readiness/route.ts");
   assert.doesNotMatch(readiness,/preview-no-persistence/);
