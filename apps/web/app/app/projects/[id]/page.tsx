@@ -58,7 +58,8 @@ export default async function ProjectWorkspace({params}:{params:Promise<{id:stri
     ["02","Brief and requirements",briefs.length?`${briefs.length} draft brief · ${requirements.length} structured requirements`:"Preparing draft brief",`/app/brief?project=${id}`],
     ["03","Design objective",approvedIntent?"Approved for governed compilation":intents.length?"Draft ready for your approval":"Preparing draft objective",`/app/design-review?project=${id}`],
     ["04","First compiler assessment",compiler.run?`${statusLabel(compiler.run.status)} · ${candidates.length} preliminary options`:"Starting first assessment",`/app/compiler?project=${id}`],
-    ["05","Professional release","Locked until evidence, checks and approvals are complete",`/app/releases?project=${id}`]
+    ["05","First drawing set",candidates.length?"Reference-grounded Revision 03 is ready for review":"Available after the first design option is generated",`/app/architecture?project=${id}`],
+    ["06","Professional release","Locked until evidence, checks and approvals are complete",`/app/releases?project=${id}`]
   ];
 
   return <>
