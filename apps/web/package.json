@@ -11,6 +11,7 @@
   "dependencies": {
     "@supabase/ssr": "0.7.0",
     "@supabase/supabase-js": "2.112.4",
+    "ai": "^6.0.272",
     "docx": "9.7.1",
     "fflate": "0.8.2",
     "next": "16.3.1",

@@ -1,13 +1,11 @@
-export default function TemplatesAdmin(){
-  const templates=[
-    ['CS-PROPOSAL-01','Proposal','v6','PDF + DOCX','Locked'],
-    ['CS-CONTRACT-01','Contract','v4','PDF + DOCX','Locked'],
-    ['CS-CLIENT-DECK-01','Client Presentation','v5','PPTX + PDF','Locked'],
-    ['CS-PROGRESS-01','Progress Report','v3','PDF + XLSX','Review'],
-    ['CS-HANDOVER-01','Handover Pack','v2','PDF + ZIP','Draft']
-  ];
-  return <>
-    <div className="topbar"><div><div className="demo">Super Admin / Templates</div><h1>Template Registry</h1><div className="subtle">Versioned, approved and checksum-locked templates for controlled platform outputs.</div></div><button className="btn">Register Template</button></div>
-    <div className="panel"><table><thead><tr><th>Code</th><th>Kind</th><th>Version</th><th>Formats</th><th>State</th></tr></thead><tbody>{templates.map(r=><tr key={r[0]}>{r.map(c=><td key={c}>{c}</td>)}</tr>)}</tbody></table></div>
-  </>;
-}
+import {createHash} from "node:crypto";
+import {revalidatePath} from "next/cache";
+import {requireWorkspaceUser} from "@/lib/auth";
+
+export const dynamic="force-dynamic";
+const kinds=["proposal","contract","client_presentation","design_report","feasibility_report","drawing_cover","drawing_register","transmittal","meeting_minutes","invoice","progress_report","handover_pack"];
+async function registerTemplate(formData:FormData){"use server";const {supabase,user,memberships}=await requireWorkspaceUser();const org=memberships.find(m=>m.status==="active")?.organisation_id;if(!org)throw new Error("Active organisation required.");const code=String(formData.get("code")||"").trim().toUpperCase();const name=String(formData.get("name")||"").trim();const kind=String(formData.get("kind")||"");const formats=String(formData.get("formats")||"pdf").split(",").map(v=>v.trim().toLowerCase()).filter(Boolean);const ref=String(formData.get("template_ref")||"").trim();const checksum=createHash("sha256").update(ref).digest("hex");const {data,error}=await supabase.from("document_templates").insert({organisation_id:org,code,name,template_kind:kind,output_formats:formats,required_data_paths:[],current_version:1,active:true}).select("id").single();if(error)throw new Error(error.message);const {error:versionError}=await supabase.from("template_versions").insert({template_id:data.id,version:1,schema_version:"conceptspaces.template.v1",template_ref:ref,checksum,required_data_paths:[],locked:false,created_by:user.id});if(versionError)throw new Error(versionError.message);revalidatePath("/app/admin/templates");}
+export default async function TemplatesAdmin(){const {supabase,memberships}=await requireWorkspaceUser();const org=memberships.find(m=>m.status==="active")?.organisation_id;const {data,error}=await supabase.from("document_templates").select("*,template_versions(version,locked,checksum)").eq("organisation_id",org||"").order("code");if(error)throw new Error(error.message);const templates=data||[];return <>
+ <div className="topbar"><div><div className="demo">Super Admin / Live Templates</div><h1>Template Registry</h1><div className="subtle">Versioned, checksum-addressed templates for governed platform outputs.</div></div></div>
+ <div className="panel-grid"><section className="panel"><h3>Register Template</h3><form action={registerTemplate}><div className="field-grid"><div className="field"><label>Code</label><input name="code" required placeholder="CS-PROPOSAL-01"/></div><div className="field"><label>Name</label><input name="name" required/></div><div className="field"><label>Kind</label><select name="kind">{kinds.map(k=><option key={k}>{k}</option>)}</select></div><div className="field"><label>Formats, comma separated</label><input name="formats" defaultValue="pdf,docx"/></div></div><div className="field"><label>Immutable template reference</label><input name="template_ref" required placeholder="storage://templates/... or runtime:..."/></div><button className="btn">Register Version 1</button></form></section><section className="panel"><h3>Registry</h3><table className="table"><thead><tr><th>Code</th><th>Kind</th><th>Version</th><th>Formats</th><th>State</th></tr></thead><tbody>{templates.map(t=>{const versions=(t.template_versions||[]) as any[];const latest=versions.sort((a,b)=>b.version-a.version)[0];return <tr key={t.id}><td><b>{t.code}</b><div className="subtle">{t.name}</div></td><td>{t.template_kind}</td><td>{latest?.version||t.current_version}</td><td>{(t.output_formats||[]).join(", ")}</td><td><span className="badge">{latest?.locked?"locked":t.active?"active":"inactive"}</span></td></tr>})}{!templates.length&&<tr><td colSpan={5} className="subtle">No templates registered.</td></tr>}</tbody></table></section></div>
+ </>}
