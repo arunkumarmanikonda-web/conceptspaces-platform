@@ -11,6 +11,7 @@ const domains=[
   ["Quality Gates","/app/admin/quality-gates","Evidence-based release and assurance controls"],
   ["Security & Privacy","/app/admin/security","Classification, privacy requests, audit verification and SRE evidence"],
   ["Integrations","/app/admin/integrations","Provider configuration, health and delivery observability"],
+  ["Drawing Intelligence","/app/admin/drawing-intelligence","Approved architectural references, extracted spatial rules and generation provenance"],
   ["API Access","/app/admin/api-access","Scoped credentials and governed data contracts"],
   ["Design System","/app/admin/design-system","Tokens, accessibility audits, localisation and human factors"],
   ["Tax Rules","/app/admin/tax-rules","Effective-dated governed tax configuration"],

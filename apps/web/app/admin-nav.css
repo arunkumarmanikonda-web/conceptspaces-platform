@@ -1,0 +1,3 @@
+.sidebar-priority{position:sticky;top:-26px;z-index:3;background:#0b1728;padding:8px 0 12px;border-bottom:1px solid #203149}
+.side-item.priority{background:#132743;color:#fff;border:1px solid #284263;font-weight:700}
+.side-item.priority:hover{background:#1a3559}
