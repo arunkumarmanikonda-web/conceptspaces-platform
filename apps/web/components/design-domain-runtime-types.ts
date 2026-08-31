@@ -23,7 +23,7 @@ export type InteriorsWorkspaceState={dna:InteriorDNA[];rooms:InteriorRoom[];mate
 export const emptyInteriorsWorkspace:InteriorsWorkspaceState={dna:[],rooms:[],materials:[],shop_drawings:[],renders:[]};
 
 export type ArchitecturePackage={id:string;project_id:string;stage:string;version:number;space_programme_ref:string;drawing_refs:unknown[];model_refs:unknown[];requirement_coverage_percent:number;design_option_id?:string|null;status:string;package_hash?:string|null;source_model_hash?:string|null;review_evidence_refs:unknown[];criticality:string;approval_credential_id?:string|null;approved_by?:string|null;approved_at?:string|null;issued_at?:string|null;issue_hash?:string|null;created_at:string};
-export type DesignOption={id:string;project_id:string;name:string;status:string;generated_by:string;metrics:unknown;validation_summary:Record<string,unknown>;created_at:string};
+export type DesignOption={id:string;project_id:string;name:string;status:string;generated_by:string;geometry_artifact_ref?:string|null;metrics:Record<string,unknown>;assumptions?:string[];validation_summary:Record<string,unknown>;created_at:string};
 export type ProfessionalReview={id:string;resource_type:string;resource_id:string;resource_hash:string;discipline:string;reviewer_user_id:string;credential_id:string;decision:string;comments?:string|null;reviewed_at?:string|null;created_at:string};
 export type ArchitectureWorkspaceState={packages:ArchitecturePackage[];programme_baselines:ProgrammeBaseline[];design_options:DesignOption[];reviews:ProfessionalReview[]};
 export const emptyArchitectureWorkspace:ArchitectureWorkspaceState={packages:[],programme_baselines:[],design_options:[],reviews:[]};
