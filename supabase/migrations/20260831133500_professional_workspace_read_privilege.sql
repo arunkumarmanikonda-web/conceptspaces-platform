@@ -74,6 +74,7 @@ grant execute on function public.create_admin_typology_pack(jsonb) to authentica
 -- project boundary.
 grant select on engagement.activations to authenticated;
 grant select on cost.qto_runs, cost.quantity_items, cost.cost_plans, cost.boq_lines to authenticated;
+grant select on feasibility.value_engineering_options to authenticated;
 grant usage on schema procurement to authenticated;
 grant select on procurement.vendors, procurement.tender_packages,
   procurement.tender_invites, procurement.clarifications, procurement.bids,
